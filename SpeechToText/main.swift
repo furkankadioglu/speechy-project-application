@@ -1,0 +1,2007 @@
+import Cocoa
+import SwiftUI
+import AVFoundation
+import Carbon.HIToolbox
+import Combine
+import ServiceManagement
+
+// MARK: - Logger
+func log(_ message: String) {
+    let logFile = "/tmp/speechy_debug.log"
+    let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+    let line = "[\(timestamp)] \(message)\n"
+    let url = URL(fileURLWithPath: logFile)
+    if let handle = try? FileHandle(forWritingTo: url) {
+        handle.seekToEndOfFile()
+        handle.write(line.data(using: .utf8)!)
+        try? handle.close()
+    } else {
+        try? line.write(toFile: logFile, atomically: true, encoding: .utf8)
+    }
+}
+
+// MARK: - Data Models
+struct HotkeyConfig: Equatable, Codable {
+    var modifiers: UInt64 = CGEventFlags.maskAlternate.rawValue
+    var language: String = "en"
+    var isEnabled: Bool = true
+
+    var modifierFlags: CGEventFlags {
+        get { CGEventFlags(rawValue: modifiers) }
+        set { modifiers = newValue.rawValue }
+    }
+
+    var displayName: String {
+        var parts: [String] = []
+        let flags = CGEventFlags(rawValue: modifiers)
+        if flags.contains(.maskShift) { parts.append("⇧") }
+        if flags.contains(.maskControl) { parts.append("⌃") }
+        if flags.contains(.maskAlternate) { parts.append("⌥") }
+        if flags.contains(.maskCommand) { parts.append("⌘") }
+        return parts.isEmpty ? "None" : parts.joined()
+    }
+}
+
+struct TranscriptionEntry: Identifiable, Codable {
+    let id: UUID
+    let text: String
+    let language: String
+    let date: Date
+
+    init(text: String, language: String) {
+        self.id = UUID()
+        self.text = text
+        self.language = language
+        self.date = Date()
+    }
+}
+
+enum ModelType: String, Codable, CaseIterable {
+    case fast = "base"
+    case accurate = "small"
+    case precise = "medium"
+
+    var displayName: String {
+        switch self {
+        case .fast: return "Fast (Base)"
+        case .accurate: return "Accurate (Small)"
+        case .precise: return "Precise (Medium)"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .fast: return "Fastest, for everyday use"
+        case .accurate: return "Balanced speed and accuracy"
+        case .precise: return "Slowest but most accurate"
+        }
+    }
+
+    var fileName: String {
+        return "ggml-\(self.rawValue).bin"
+    }
+
+    var downloadURL: URL {
+        URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(fileName)")!
+    }
+
+    var sizeDescription: String {
+        switch self {
+        case .fast: return "~150 MB"
+        case .accurate: return "~500 MB"
+        case .precise: return "~1.5 GB"
+        }
+    }
+
+    var sizeBytes: Int64 {
+        switch self {
+        case .fast: return 150_000_000
+        case .accurate: return 500_000_000
+        case .precise: return 1_500_000_000
+        }
+    }
+}
+
+// MARK: - Model Download Manager
+class ModelDownloadManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
+    static let shared = ModelDownloadManager()
+
+    @Published var isDownloading = false
+    @Published var downloadProgress: Double = 0
+    @Published var downloadingModel: ModelType?
+    @Published var downloadError: String?
+
+    private var downloadTask: URLSessionDownloadTask?
+    private var session: URLSession!
+
+    static var modelsDirectory: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let speechyDir = appSupport.appendingPathComponent("Speechy/Models", isDirectory: true)
+        try? FileManager.default.createDirectory(at: speechyDir, withIntermediateDirectories: true)
+        return speechyDir
+    }
+
+    override init() {
+        super.init()
+        let config = URLSessionConfiguration.default
+        session = URLSession(configuration: config, delegate: self, delegateQueue: .main)
+    }
+
+    func modelExists(_ model: ModelType) -> Bool {
+        let path = Self.modelsDirectory.appendingPathComponent(model.fileName)
+        return FileManager.default.fileExists(atPath: path.path)
+    }
+
+    func modelPath(_ model: ModelType) -> String {
+        return Self.modelsDirectory.appendingPathComponent(model.fileName).path
+    }
+
+    func downloadModel(_ model: ModelType, completion: ((Bool) -> Void)? = nil) {
+        guard !isDownloading else { return }
+
+        isDownloading = true
+        downloadProgress = 0
+        downloadingModel = model
+        downloadError = nil
+
+        log("[Speechy] Starting download: \(model.displayName) from \(model.downloadURL)")
+
+        let task = session.downloadTask(with: model.downloadURL)
+        self.downloadTask = task
+        task.resume()
+    }
+
+    func cancelDownload() {
+        downloadTask?.cancel()
+        isDownloading = false
+        downloadingModel = nil
+        downloadProgress = 0
+    }
+
+    // URLSessionDownloadDelegate
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        guard let model = downloadingModel else { return }
+
+        let destination = Self.modelsDirectory.appendingPathComponent(model.fileName)
+
+        do {
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.moveItem(at: location, to: destination)
+            log("[Speechy] Model downloaded successfully: \(destination.path)")
+
+            DispatchQueue.main.async {
+                self.isDownloading = false
+                self.downloadingModel = nil
+                self.downloadProgress = 1.0
+            }
+        } catch {
+            log("[Speechy] Error saving model: \(error)")
+            DispatchQueue.main.async {
+                self.downloadError = error.localizedDescription
+                self.isDownloading = false
+                self.downloadingModel = nil
+            }
+        }
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        DispatchQueue.main.async {
+            self.downloadProgress = progress
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error = error {
+            log("[Speechy] Download error: \(error)")
+            DispatchQueue.main.async {
+                self.downloadError = error.localizedDescription
+                self.isDownloading = false
+                self.downloadingModel = nil
+            }
+        }
+    }
+}
+
+let supportedLanguages: [(code: String, name: String, flag: String)] = [
+    ("auto", "Auto Detect", "🌍"),
+    ("en", "English", "🇬🇧"),
+    ("tr", "Türkçe", "🇹🇷"),
+    ("de", "Deutsch", "🇩🇪"),
+    ("fr", "Français", "🇫🇷"),
+    ("es", "Español", "🇪🇸"),
+    ("it", "Italiano", "🇮🇹"),
+    ("pt", "Português", "🇵🇹"),
+    ("nl", "Nederlands", "🇳🇱"),
+    ("pl", "Polski", "🇵🇱"),
+    ("ru", "Русский", "🇷🇺"),
+    ("uk", "Українська", "🇺🇦"),
+    ("ja", "日本語", "🇯🇵"),
+    ("zh", "中文", "🇨🇳"),
+    ("ko", "한국어", "🇰🇷"),
+    ("ar", "العربية", "🇸🇦"),
+    ("hi", "हिन्दी", "🇮🇳"),
+    ("sv", "Svenska", "🇸🇪"),
+    ("da", "Dansk", "🇩🇰"),
+    ("no", "Norsk", "🇳🇴"),
+    ("fi", "Suomi", "🇫🇮"),
+    ("el", "Ελληνικά", "🇬🇷"),
+    ("cs", "Čeština", "🇨🇿"),
+    ("ro", "Română", "🇷🇴"),
+    ("hu", "Magyar", "🇭🇺"),
+    ("he", "עברית", "🇮🇱"),
+    ("id", "Indonesia", "🇮🇩"),
+    ("vi", "Tiếng Việt", "🇻🇳"),
+    ("th", "ไทย", "🇹🇭"),
+]
+
+// MARK: - Settings Manager
+class SettingsManager: ObservableObject {
+    static let shared = SettingsManager()
+
+    @Published var slot1: HotkeyConfig
+    @Published var slot2: HotkeyConfig
+    @Published var activationDelay: Double
+    @Published var selectedModel: ModelType
+    @Published var history: [TranscriptionEntry]
+    @Published var hasCompletedOnboarding: Bool
+    @Published var launchAtLogin: Bool {
+        didSet {
+            setLaunchAtLogin(launchAtLogin)
+        }
+    }
+
+    var onSettingsChanged: (() -> Void)?
+    private var cancellables = Set<AnyCancellable>()
+
+    init() {
+        // Load saved settings
+        let defaults = UserDefaults.standard
+
+        // Initialize all stored properties first
+        if let data = defaults.data(forKey: "slot1"), let config = try? JSONDecoder().decode(HotkeyConfig.self, from: data) {
+            _slot1 = Published(initialValue: config)
+        } else {
+            _slot1 = Published(initialValue: HotkeyConfig(modifiers: CGEventFlags.maskAlternate.rawValue, language: "en"))
+        }
+
+        if let data = defaults.data(forKey: "slot2"), let config = try? JSONDecoder().decode(HotkeyConfig.self, from: data) {
+            _slot2 = Published(initialValue: config)
+        } else {
+            _slot2 = Published(initialValue: HotkeyConfig(modifiers: CGEventFlags.maskShift.rawValue, language: "tr"))
+        }
+
+        let delay = defaults.double(forKey: "activationDelay")
+        _activationDelay = Published(initialValue: delay == 0 ? 0.15 : delay)
+
+        if let modelRaw = defaults.string(forKey: "selectedModel"), let model = ModelType(rawValue: modelRaw) {
+            _selectedModel = Published(initialValue: model)
+        } else {
+            _selectedModel = Published(initialValue: .fast)
+        }
+
+        if let data = defaults.data(forKey: "history"), let h = try? JSONDecoder().decode([TranscriptionEntry].self, from: data) {
+            _history = Published(initialValue: h)
+        } else {
+            _history = Published(initialValue: [])
+        }
+
+        _hasCompletedOnboarding = Published(initialValue: defaults.bool(forKey: "hasCompletedOnboarding"))
+
+        // Check current launch at login status
+        if #available(macOS 13.0, *) {
+            _launchAtLogin = Published(initialValue: SMAppService.mainApp.status == .enabled)
+        } else {
+            _launchAtLogin = Published(initialValue: false)
+        }
+
+        // Auto-save and notify on changes
+        $slot1.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
+        $slot2.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
+        $activationDelay.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
+        $selectedModel.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
+        $hasCompletedOnboarding.dropFirst()
+            .sink { val in UserDefaults.standard.set(val, forKey: "hasCompletedOnboarding") }.store(in: &cancellables)
+    }
+
+    private func save() {
+        let defaults = UserDefaults.standard
+        if let data = try? JSONEncoder().encode(slot1) { defaults.set(data, forKey: "slot1") }
+        if let data = try? JSONEncoder().encode(slot2) { defaults.set(data, forKey: "slot2") }
+        defaults.set(activationDelay, forKey: "activationDelay")
+        defaults.set(selectedModel.rawValue, forKey: "selectedModel")
+        if let data = try? JSONEncoder().encode(history) { defaults.set(data, forKey: "history") }
+    }
+
+    func addToHistory(_ text: String, language: String) {
+        // Don't add blank audio or very short texts
+        if text.contains("[BLANK_AUDIO]") || text.count < 2 { return }
+        let entry = TranscriptionEntry(text: text, language: language)
+        history.insert(entry, at: 0)
+        if history.count > 50 { history = Array(history.prefix(50)) }
+        save()
+    }
+
+    func clearHistory() {
+        history.removeAll()
+        save()
+    }
+
+    func deleteEntry(_ entry: TranscriptionEntry) {
+        history.removeAll { $0.id == entry.id }
+        save()
+    }
+
+    private func setLaunchAtLogin(_ enabled: Bool) {
+        if #available(macOS 13.0, *) {
+            do {
+                if enabled {
+                    try SMAppService.mainApp.register()
+                    log("[Speechy] Launch at login enabled")
+                } else {
+                    try SMAppService.mainApp.unregister()
+                    log("[Speechy] Launch at login disabled")
+                }
+            } catch {
+                log("[Speechy] Failed to set launch at login: \(error)")
+            }
+        }
+    }
+}
+
+// MARK: - Onboarding View
+struct OnboardingView: View {
+    @ObservedObject var settings = SettingsManager.shared
+    @State private var currentPage = 0
+    var onComplete: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Content
+            TabView(selection: $currentPage) {
+                // Page 1: Welcome
+                VStack(spacing: 20) {
+                    Image(systemName: "mic.circle.fill")
+                        .font(.system(size: 80))
+                        .foregroundColor(.blue)
+
+                    Text("Welcome to Speechy")
+                        .font(.largeTitle.bold())
+
+                    Text("The fastest way to convert speech to text")
+                        .font(.title3)
+                        .foregroundColor(.secondary)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        FeatureRow(icon: "keyboard", text: "Instant recording with hotkeys")
+                        FeatureRow(icon: "globe", text: "29 language support")
+                        FeatureRow(icon: "bolt.fill", text: "Fast AI-powered transcription")
+                    }
+                    .padding(.top, 20)
+                }
+                .tag(0)
+
+                // Page 2: Permissions
+                VStack(spacing: 20) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(.green)
+
+                    Text("Permissions Required")
+                        .font(.title.bold())
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        PermissionCard(
+                            icon: "mic.fill",
+                            title: "Microphone Access",
+                            description: "Microphone access is required to record your voice.",
+                            color: .blue
+                        )
+
+                        PermissionCard(
+                            icon: "hand.raised.fill",
+                            title: "Accessibility",
+                            description: "Accessibility permission is required to detect hotkeys. Enable Speechy in System Settings > Privacy & Security > Accessibility.",
+                            color: .orange
+                        )
+                    }
+                    .padding()
+                }
+                .tag(1)
+
+                // Page 3: Setup
+                VStack(spacing: 20) {
+                    Image(systemName: "gearshape.2.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(.purple)
+
+                    Text("How to Use")
+                        .font(.title.bold())
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        HowToCard(step: "1", text: "Click the 🎤 icon in the menu bar")
+                        HowToCard(step: "2", text: "Configure your hotkeys")
+                        HowToCard(step: "3", text: "Hold the hotkey and speak")
+                        HowToCard(step: "4", text: "Release to paste the text!")
+                    }
+                    .padding()
+
+                    Text("Default: ⌥ Option → English, ⇧ Shift → Turkish")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .tag(2)
+            }
+            .tabViewStyle(.automatic)
+            .frame(height: 400)
+
+            // Navigation
+            HStack {
+                if currentPage > 0 {
+                    Button("Back") {
+                        withAnimation { currentPage -= 1 }
+                    }
+                }
+
+                Spacer()
+
+                // Page indicators
+                HStack(spacing: 8) {
+                    ForEach(0..<3) { i in
+                        Circle()
+                            .fill(i == currentPage ? Color.blue : Color.gray.opacity(0.3))
+                            .frame(width: 8, height: 8)
+                    }
+                }
+
+                Spacer()
+
+                if currentPage < 2 {
+                    Button("Next") {
+                        withAnimation { currentPage += 1 }
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    Button("Get Started") {
+                        settings.hasCompletedOnboarding = true
+                        onComplete()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding()
+        }
+        .frame(width: 500, height: 500)
+    }
+}
+
+struct FeatureRow: View {
+    let icon: String
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundColor(.blue)
+                .frame(width: 24)
+            Text(text)
+        }
+    }
+}
+
+struct PermissionCard: View {
+    let icon: String
+    let title: String
+    let description: String
+    let color: Color
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundColor(color)
+                .frame(width: 30)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                Text(description)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(10)
+    }
+}
+
+struct HowToCard: View {
+    let step: String
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(step)
+                .font(.headline)
+                .foregroundColor(.white)
+                .frame(width: 28, height: 28)
+                .background(Color.purple)
+                .clipShape(Circle())
+            Text(text)
+                .font(.body)
+        }
+    }
+}
+
+// MARK: - Splash Screen View
+struct SplashView: View {
+    @State private var progress: Double = 0
+    @State private var opacity: Double = 1
+    var onComplete: () -> Void
+
+    var body: some View {
+        ZStack {
+            // Background gradient
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    Color(red: 0.1, green: 0.1, blue: 0.15),
+                    Color(red: 0.05, green: 0.05, blue: 0.1)
+                ]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 30) {
+                Spacer()
+
+                // App icon
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [Color.blue, Color.purple]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 120, height: 120)
+                        .shadow(color: Color.blue.opacity(0.5), radius: 20, x: 0, y: 10)
+
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 50, weight: .medium))
+                        .foregroundColor(.white)
+                }
+
+                // App name
+                Text("Speechy")
+                    .font(.system(size: 42, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+
+                Text("Speech to Text")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+
+                Spacer()
+
+                // Progress bar
+                VStack(spacing: 12) {
+                    ZStack(alignment: .leading) {
+                        // Background track
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.white.opacity(0.1))
+                            .frame(width: 200, height: 6)
+
+                        // Progress fill
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [Color.blue, Color.purple]),
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: 200 * progress, height: 6)
+                            .animation(.easeInOut(duration: 0.1), value: progress)
+                    }
+
+                    Text("Loading...")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding(.bottom, 60)
+            }
+        }
+        .opacity(opacity)
+        .onAppear {
+            // Animate the progress bar over 2 seconds
+            Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { timer in
+                if progress < 1 {
+                    progress += 0.01
+                } else {
+                    timer.invalidate()
+                    // Fade out and complete
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        opacity = 0
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        onComplete()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Custom Tab Button
+struct TabButton: View {
+    let title: String
+    let icon: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .foregroundColor(isSelected ? .white : .secondary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(
+                Group {
+                    if isSelected {
+                        LinearGradient(
+                            gradient: Gradient(colors: [Color.blue, Color.blue.opacity(0.8)]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    } else {
+                        Color.clear
+                    }
+                }
+            )
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? Color.clear : Color.secondary.opacity(0.2), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Sidebar Item
+struct SidebarItem: View {
+    let title: String
+    let icon: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .medium))
+                    .frame(width: 20)
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                Spacer()
+            }
+            .foregroundColor(isSelected ? .white : .primary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                Group {
+                    if isSelected {
+                        LinearGradient(
+                            gradient: Gradient(colors: [Color.blue, Color.blue.opacity(0.8)]),
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    } else {
+                        Color.clear
+                    }
+                }
+            )
+            .cornerRadius(8)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Main Settings View
+struct SettingsView: View {
+    @ObservedObject var settings = SettingsManager.shared
+    @State private var selectedTab = 0
+    var onQuit: () -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            // Sidebar
+            VStack(spacing: 0) {
+                // Logo & App Name
+                VStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [Color.blue, Color.purple]),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 50, height: 50)
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 22, weight: .medium))
+                            .foregroundColor(.white)
+                    }
+                    Text("Speechy")
+                        .font(.system(size: 15, weight: .bold))
+                }
+                .padding(.top, 20)
+                .padding(.bottom, 24)
+
+                // Navigation Items
+                VStack(spacing: 4) {
+                    SidebarItem(
+                        title: "Settings",
+                        icon: "gearshape.fill",
+                        isSelected: selectedTab == 0,
+                        action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 0 } }
+                    )
+                    SidebarItem(
+                        title: "History",
+                        icon: "clock.fill",
+                        isSelected: selectedTab == 1,
+                        action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 1 } }
+                    )
+                }
+                .padding(.horizontal, 8)
+
+                Spacer()
+
+                // Quit button at bottom
+                Button(action: onQuit) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "power")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Quit")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundColor(.red.opacity(0.8))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.red.opacity(0.1))
+                    .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 16)
+            }
+            .frame(width: 140, alignment: .leading)
+            .fixedSize(horizontal: true, vertical: false)
+            .background(Color(NSColor.windowBackgroundColor).opacity(0.5))
+
+            // Divider
+            Rectangle()
+                .fill(Color.primary.opacity(0.1))
+                .frame(width: 1)
+
+            // Main Content
+            VStack(spacing: 0) {
+                if selectedTab == 0 {
+                    SettingsTab(settings: settings)
+                } else {
+                    HistoryTab(settings: settings)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(width: 560, height: 520)
+    }
+}
+
+struct SettingsTab: View {
+    @ObservedObject var settings: SettingsManager
+    @ObservedObject var downloadManager = ModelDownloadManager.shared
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                // Section: Hotkeys
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeader(icon: "keyboard", title: "Hotkeys", color: .blue)
+
+                    SlotConfigView(title: "Hotkey 1", config: Binding(
+                        get: { settings.slot1 },
+                        set: { settings.slot1 = $0 }
+                    ), accentColor: .blue)
+
+                    SlotConfigView(title: "Hotkey 2", config: Binding(
+                        get: { settings.slot2 },
+                        set: { settings.slot2 = $0 }
+                    ), accentColor: .green)
+                }
+
+                // Section: Model Selection
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeader(icon: "cpu", title: "AI Model", color: .purple)
+
+                    VStack(spacing: 8) {
+                        ForEach(ModelType.allCases, id: \.self) { model in
+                            ModelOptionRow(
+                                model: model,
+                                isSelected: settings.selectedModel == model,
+                                isDownloaded: downloadManager.modelExists(model),
+                                isDownloading: downloadManager.downloadingModel == model,
+                                downloadProgress: downloadManager.downloadingModel == model ? downloadManager.downloadProgress : 0,
+                                onSelect: {
+                                    if downloadManager.modelExists(model) {
+                                        withAnimation(.easeInOut(duration: 0.15)) {
+                                            settings.selectedModel = model
+                                        }
+                                    }
+                                },
+                                onDownload: {
+                                    downloadManager.downloadModel(model)
+                                }
+                            )
+                        }
+                    }
+                    .padding()
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(12)
+
+                    if let error = downloadManager.downloadError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .padding(.horizontal)
+                    }
+                }
+
+                // Section: Activation Delay
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeader(icon: "timer", title: "Activation Delay", color: .orange)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("Delay Duration")
+                                .font(.subheadline)
+                            Spacer()
+                            Text("\(Int(settings.activationDelay * 1000)) ms")
+                                .font(.system(.subheadline, design: .rounded).bold())
+                                .foregroundColor(.orange)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Color.orange.opacity(0.15))
+                                .cornerRadius(6)
+                        }
+
+                        Slider(value: $settings.activationDelay, in: 0...0.5, step: 0.05)
+                            .tint(.orange)
+
+                        Text("Hold the hotkey for this duration to prevent accidental triggers")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding()
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(12)
+                }
+
+                // Section: General
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeader(icon: "gear", title: "General", color: .gray)
+
+                    VStack(spacing: 0) {
+                        HStack {
+                            Image(systemName: "sunrise.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.yellow)
+                                .frame(width: 28)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Launch at Login")
+                                    .font(.subheadline.weight(.medium))
+                                Text("Start Speechy automatically when you log in")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+
+                            Toggle("", isOn: $settings.launchAtLogin)
+                                .toggleStyle(SwitchToggleStyle(tint: .blue))
+                                .labelsHidden()
+                        }
+                        .padding()
+                    }
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(12)
+                }
+            }
+            .padding()
+        }
+    }
+}
+
+struct SectionHeader: View {
+    let icon: String
+    let title: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(color)
+            Text(title)
+                .font(.headline)
+            Spacer()
+        }
+    }
+}
+
+struct ModelOptionRow: View {
+    let model: ModelType
+    let isSelected: Bool
+    let isDownloaded: Bool
+    let isDownloading: Bool
+    let downloadProgress: Double
+    let onSelect: () -> Void
+    let onDownload: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Selection indicator
+            ZStack {
+                Circle()
+                    .stroke(isSelected ? Color.purple : Color.secondary.opacity(0.3), lineWidth: 2)
+                    .frame(width: 22, height: 22)
+                if isSelected {
+                    Circle()
+                        .fill(Color.purple)
+                        .frame(width: 14, height: 14)
+                }
+            }
+            .opacity(isDownloaded ? 1 : 0.3)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(model.displayName)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.primary)
+
+                    if !isDownloaded && !isDownloading {
+                        Text(model.sizeDescription)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.15))
+                            .cornerRadius(4)
+                    }
+                }
+                Text(model.description)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                if isDownloading {
+                    ProgressView(value: downloadProgress)
+                        .progressViewStyle(.linear)
+                        .frame(height: 4)
+                    Text("\(Int(downloadProgress * 100))% downloading...")
+                        .font(.caption2)
+                        .foregroundColor(.blue)
+                }
+            }
+
+            Spacer()
+
+            if isDownloaded {
+                Button(action: onSelect) {
+                    Text(model == .fast ? "⚡️" : model == .accurate ? "🎯" : "🔬")
+                        .font(.title2)
+                }
+                .buttonStyle(.plain)
+            } else if isDownloading {
+                ProgressView()
+                    .scaleEffect(0.7)
+            } else {
+                Button(action: onDownload) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.down.circle.fill")
+                        Text("Download")
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.blue)
+                    .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(isSelected && isDownloaded ? Color.purple.opacity(0.1) : (isHovering ? Color.primary.opacity(0.03) : Color.clear))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isSelected && isDownloaded ? Color.purple.opacity(0.3) : Color.clear, lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isDownloaded {
+                onSelect()
+            }
+        }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isHovering = hovering
+            }
+        }
+    }
+}
+
+struct HistoryTab: View {
+    @ObservedObject var settings: SettingsManager
+    @State private var showClearConfirmation = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if settings.history.isEmpty {
+                Spacer()
+                VStack(spacing: 16) {
+                    Image(systemName: "text.bubble")
+                        .font(.system(size: 50))
+                        .foregroundColor(.secondary.opacity(0.5))
+                    Text("No recordings yet")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    Text("Your transcriptions will appear here")
+                        .font(.caption)
+                        .foregroundColor(.secondary.opacity(0.7))
+                }
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(settings.history) { entry in
+                            HistoryRow(entry: entry, onDelete: {
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    settings.deleteEntry(entry)
+                                }
+                            })
+                        }
+                    }
+                    .padding()
+                }
+
+                // Footer with clear all button
+                VStack(spacing: 0) {
+                    Divider()
+                    HStack {
+                        HStack(spacing: 4) {
+                            Image(systemName: "doc.text")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("\(settings.history.count) items")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        Spacer()
+
+                        Button(action: { showClearConfirmation = true }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "trash")
+                                    .font(.caption)
+                                Text("Clear All")
+                                    .font(.caption.weight(.medium))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.red.opacity(0.85))
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                        .alert("Clear History", isPresented: $showClearConfirmation) {
+                            Button("Cancel", role: .cancel) { }
+                            Button("Delete", role: .destructive) {
+                                withAnimation { settings.clearHistory() }
+                            }
+                        } message: {
+                            Text("All recordings will be deleted. This action cannot be undone.")
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+                    .background(Color(NSColor.windowBackgroundColor))
+                }
+            }
+        }
+    }
+}
+
+struct HistoryRow: View {
+    let entry: TranscriptionEntry
+    let onDelete: () -> Void
+    @State private var isHovering = false
+    @State private var showCopied = false
+
+    var flag: String {
+        supportedLanguages.first { $0.code == entry.language }?.flag ?? "🌍"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Header with flag and time
+            HStack {
+                Text(flag)
+                    .font(.title3)
+                Text(entry.date, style: .relative)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Spacer()
+
+                // Action buttons
+                HStack(spacing: 4) {
+                    // Copy button
+                    Button(action: {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(entry.text, forType: .string)
+                        showCopied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            showCopied = false
+                        }
+                    }) {
+                        Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 12))
+                            .foregroundColor(showCopied ? .green : .secondary)
+                            .frame(width: 28, height: 28)
+                            .background(Color(NSColor.controlBackgroundColor))
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy")
+
+                    // Delete button
+                    Button(action: onDelete) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .frame(width: 28, height: 28)
+                            .background(Color(NSColor.controlBackgroundColor))
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Delete")
+                }
+                .opacity(isHovering ? 1 : 0.6)
+            }
+
+            // Text content
+            Text(entry.text)
+                .font(.body)
+                .lineLimit(3)
+                .foregroundColor(.primary)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(NSColor.controlBackgroundColor))
+                .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.primary.opacity(isHovering ? 0.1 : 0.05), lineWidth: 1)
+        )
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovering = hovering
+            }
+        }
+    }
+}
+
+struct SlotConfigView: View {
+    let title: String
+    @Binding var config: HotkeyConfig
+    let accentColor: Color
+
+    var currentFlag: String {
+        supportedLanguages.first { $0.code == config.language }?.flag ?? "🌍"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header
+            HStack {
+                // Toggle switch
+                Toggle("", isOn: $config.isEnabled)
+                    .toggleStyle(SwitchToggleStyle(tint: accentColor))
+                    .labelsHidden()
+                    .scaleEffect(0.8)
+
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(config.isEnabled ? accentColor : Color.secondary.opacity(0.3))
+                        .frame(width: 10, height: 10)
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(config.isEnabled ? .primary : .secondary)
+                }
+
+                Spacer()
+
+                // Current shortcut display
+                HStack(spacing: 6) {
+                    Text(config.displayName)
+                        .font(.system(.subheadline, design: .monospaced).weight(.medium))
+                    Text(currentFlag)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(accentColor.opacity(config.isEnabled ? 0.1 : 0.05))
+                .cornerRadius(8)
+                .opacity(config.isEnabled ? 1 : 0.5)
+            }
+
+            // Modifier keys
+            HStack(spacing: 6) {
+                ModifierToggle(label: "⇧", fullLabel: "Shift", flag: .maskShift, config: $config, accentColor: accentColor)
+                ModifierToggle(label: "⌃", fullLabel: "Control", flag: .maskControl, config: $config, accentColor: accentColor)
+                ModifierToggle(label: "⌥", fullLabel: "Option", flag: .maskAlternate, config: $config, accentColor: accentColor)
+                ModifierToggle(label: "⌘", fullLabel: "Command", flag: .maskCommand, config: $config, accentColor: accentColor)
+            }
+            .opacity(config.isEnabled ? 1 : 0.4)
+            .disabled(!config.isEnabled)
+
+            // Language picker
+            HStack(spacing: 10) {
+                Image(systemName: "globe")
+                    .foregroundColor(.secondary)
+                    .font(.subheadline)
+                Picker("", selection: $config.language) {
+                    ForEach(supportedLanguages, id: \.code) { lang in
+                        Text("\(lang.flag) \(lang.name)").tag(lang.code)
+                    }
+                }
+                .labelsHidden()
+                .disabled(!config.isEnabled)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.windowBackgroundColor))
+            .cornerRadius(8)
+            .opacity(config.isEnabled ? 1 : 0.4)
+        }
+        .padding()
+        .background(Color(NSColor.controlBackgroundColor).opacity(config.isEnabled ? 1 : 0.6))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(accentColor.opacity(config.isEnabled ? 0.2 : 0.1), lineWidth: 1)
+        )
+        .animation(.easeInOut(duration: 0.15), value: config.isEnabled)
+    }
+}
+
+struct ModifierToggle: View {
+    let label: String
+    let fullLabel: String
+    let flag: CGEventFlags
+    @Binding var config: HotkeyConfig
+    let accentColor: Color
+    @State private var isHovering = false
+
+    var isOn: Bool {
+        config.modifierFlags.contains(flag)
+    }
+
+    var body: some View {
+        Button(action: {
+            withAnimation(.easeInOut(duration: 0.1)) {
+                var flags = config.modifierFlags
+                if isOn {
+                    flags.remove(flag)
+                } else {
+                    flags.insert(flag)
+                }
+                config.modifierFlags = flags
+            }
+        }) {
+            Text(label)
+                .font(.system(size: 18, weight: .medium))
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isOn ? accentColor : (isHovering ? Color.primary.opacity(0.05) : Color(NSColor.windowBackgroundColor)))
+                )
+                .foregroundColor(isOn ? .white : .primary)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isOn ? accentColor : Color.primary.opacity(0.1), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(fullLabel)
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isHovering = hovering
+            }
+        }
+    }
+}
+
+// MARK: - Overlay Window
+class OverlayWindow: NSWindow {
+    private let iconLabel: NSTextField
+    private var spinner: NSProgressIndicator?
+
+    enum State { case hidden, recording, processing }
+
+    init() {
+        iconLabel = NSTextField(labelWithString: "")
+        iconLabel.font = NSFont.systemFont(ofSize: 48)
+        iconLabel.alignment = .center
+
+        let windowSize = NSSize(width: 100, height: 100)
+        let screenFrame = NSScreen.main?.visibleFrame ?? .zero
+        let windowOrigin = NSPoint(x: screenFrame.midX - windowSize.width / 2, y: screenFrame.minY + 80)
+
+        super.init(contentRect: NSRect(origin: windowOrigin, size: windowSize),
+                   styleMask: .borderless, backing: .buffered, defer: false)
+
+        self.isOpaque = false
+        self.backgroundColor = .clear
+        self.level = .floating
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary]
+        self.ignoresMouseEvents = true
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.8).cgColor
+        container.layer?.cornerRadius = 20
+        iconLabel.frame = NSRect(x: 0, y: 25, width: 100, height: 60)
+        container.addSubview(iconLabel)
+        self.contentView = container
+    }
+
+    func setState(_ state: State, flag: String? = nil) {
+        DispatchQueue.main.async {
+            switch state {
+            case .hidden:
+                self.orderOut(nil)
+                self.spinner?.stopAnimation(nil)
+                self.spinner?.removeFromSuperview()
+                self.spinner = nil
+            case .recording:
+                self.spinner?.removeFromSuperview()
+                self.spinner = nil
+                self.iconLabel.stringValue = flag ?? "🎙️"
+                self.iconLabel.isHidden = false
+                self.orderFront(nil)
+            case .processing:
+                self.iconLabel.isHidden = true
+                if self.spinner == nil {
+                    let s = NSProgressIndicator()
+                    s.style = .spinning
+                    s.frame = NSRect(x: 30, y: 30, width: 40, height: 40)
+                    s.appearance = NSAppearance(named: .darkAqua)
+                    self.contentView?.addSubview(s)
+                    self.spinner = s
+                }
+                self.spinner?.startAnimation(nil)
+                self.orderFront(nil)
+            }
+        }
+    }
+}
+
+// MARK: - App Delegate
+class AppDelegate: NSObject, NSApplicationDelegate {
+    var statusItem: NSStatusItem!
+    var hotkeyManager: HotkeyManager!
+    var audioRecorder: AudioRecorder!
+    var whisperTranscriber: WhisperTranscriber!
+    var overlayWindow: OverlayWindow!
+    var mainWindow: NSWindow?
+    var splashWindow: NSWindow?
+
+    var activeLanguage = "en"
+    var activeFlag = "🇬🇧"
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        log("[Speechy] App starting...")
+
+        // Show splash screen first
+        showSplashScreen()
+    }
+
+    func showSplashScreen() {
+        log("[Speechy] Showing splash screen...")
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 500),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+
+        let splashView = SplashView { [weak self] in
+            log("[Speechy] Splash complete, initializing app...")
+            DispatchQueue.main.async {
+                self?.splashWindow?.orderOut(nil)
+                self?.splashWindow = nil
+                self?.initializeApp()
+            }
+        }
+
+        window.contentView = NSHostingView(rootView: splashView)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.level = .screenSaver
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        splashWindow = window
+
+        DispatchQueue.main.async {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    func initializeApp() {
+        overlayWindow = OverlayWindow()
+        audioRecorder = AudioRecorder()
+        whisperTranscriber = WhisperTranscriber()
+        hotkeyManager = HotkeyManager()
+
+        setupStatusBar()
+        setupHotkeyManager()
+        requestPermissions()
+
+        SettingsManager.shared.onSettingsChanged = { [weak self] in
+            self?.hotkeyManager.updateConfigs()
+            self?.whisperTranscriber.updateModel()
+        }
+
+        // Show onboarding or settings
+        if !SettingsManager.shared.hasCompletedOnboarding {
+            showOnboarding()
+        }
+
+        // Auto-download base model if no models exist
+        checkAndDownloadModel()
+
+        log("[Speechy] App initialized")
+    }
+
+    func checkAndDownloadModel() {
+        let downloadManager = ModelDownloadManager.shared
+        let hasAnyModel = ModelType.allCases.contains { downloadManager.modelExists($0) }
+
+        if !hasAnyModel {
+            log("[Speechy] No models found, starting auto-download of base model...")
+            downloadManager.downloadModel(.fast)
+            // Make sure the selected model is set to fast
+            SettingsManager.shared.selectedModel = .fast
+        } else {
+            // Ensure selected model exists, otherwise switch to an available one
+            if !downloadManager.modelExists(SettingsManager.shared.selectedModel) {
+                if let availableModel = ModelType.allCases.first(where: { downloadManager.modelExists($0) }) {
+                    log("[Speechy] Selected model not found, switching to \(availableModel.displayName)")
+                    SettingsManager.shared.selectedModel = availableModel
+                }
+            }
+        }
+    }
+
+    func setupStatusBar() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = statusItem.button {
+            button.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Speechy")
+            button.action = #selector(statusBarClicked)
+            button.target = self
+        }
+    }
+
+    @objc func statusBarClicked() {
+        openSettings()
+    }
+
+    func setupHotkeyManager() {
+        hotkeyManager.onRecordingStart = { [weak self] lang, flag in
+            self?.startRecording(language: lang, flag: flag)
+        }
+        hotkeyManager.onRecordingStop = { [weak self] in
+            self?.stopRecording()
+        }
+        hotkeyManager.updateConfigs()
+    }
+
+    func requestPermissions() {
+        hotkeyManager.startListening()
+
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        log("[Speechy] Mic permission status: \(status.rawValue)")
+        if status != .authorized {
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                log("[Speechy] Mic permission granted: \(granted)")
+            }
+        }
+
+        // Listen for open settings notification
+        NotificationCenter.default.addObserver(self, selector: #selector(openSettings), name: NSNotification.Name("OpenSettings"), object: nil)
+    }
+
+    func showOnboarding() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 500),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        let view = OnboardingView { [weak self] in
+            window.close()
+            self?.openSettings()
+        }
+        window.contentView = NSHostingView(rootView: view)
+        window.title = "Welcome to Speechy"
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        mainWindow = window
+    }
+
+    @objc func openSettings() {
+        if mainWindow == nil || !mainWindow!.isVisible {
+            mainWindow = nil
+            let view = SettingsView { [weak self] in
+                self?.quit()
+            }
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 560, height: 520),
+                styleMask: [.titled, .closable],
+                backing: .buffered,
+                defer: false
+            )
+            window.contentView = NSHostingView(rootView: view)
+            window.title = "Speechy"
+            window.center()
+            window.isReleasedWhenClosed = false
+            mainWindow = window
+        }
+        mainWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func startRecording(language: String, flag: String) {
+        activeLanguage = language
+        activeFlag = flag
+        log("[Speechy] Recording started - lang: \(language)")
+        DispatchQueue.main.async {
+            self.overlayWindow.setState(.recording, flag: flag)
+        }
+        audioRecorder.startRecording()
+    }
+
+    func stopRecording() {
+        log("[Speechy] Recording stopped")
+        DispatchQueue.main.async {
+            self.overlayWindow.setState(.processing)
+        }
+
+        audioRecorder.stopRecording { [weak self] url in
+            guard let self = self, let audioURL = url else {
+                DispatchQueue.main.async {
+                    self?.overlayWindow.setState(.hidden)
+                }
+                return
+            }
+
+            self.whisperTranscriber.transcribe(audioURL: audioURL, language: self.activeLanguage) { result in
+                DispatchQueue.main.async {
+                    self.overlayWindow.setState(.hidden)
+                    if let text = result, !text.isEmpty {
+                        SettingsManager.shared.addToHistory(text, language: self.activeLanguage)
+                        self.pasteText(text)
+                    }
+                }
+                try? FileManager.default.removeItem(at: audioURL)
+            }
+        }
+    }
+
+    func pasteText(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            let src = CGEventSource(stateID: .hidSystemState)
+            let down = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: true)
+            down?.flags = .maskCommand
+            down?.post(tap: .cghidEventTap)
+            let up = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
+            up?.flags = .maskCommand
+            up?.post(tap: .cghidEventTap)
+        }
+    }
+
+    @objc func quit() {
+        hotkeyManager.stopListening()
+        NSApp.terminate(nil)
+    }
+}
+
+// MARK: - Hotkey Manager
+class HotkeyManager {
+    var onRecordingStart: ((String, String) -> Void)?
+    var onRecordingStop: (() -> Void)?
+
+    private var eventTap: CFMachPort?
+    private var runLoopSource: CFRunLoopSource?
+    private var slot1Config = HotkeyConfig()
+    private var slot2Config = HotkeyConfig()
+    private var activationDelay: Double = 0.15
+
+    private var activeSlot: Int? = nil
+    private var delayTimer: Timer?
+    private var isRecording = false
+
+    func updateConfigs() {
+        let settings = SettingsManager.shared
+        slot1Config = settings.slot1
+        slot2Config = settings.slot2
+        activationDelay = settings.activationDelay
+        log("[Speechy] Configs updated - slot1: \(slot1Config.displayName), slot2: \(slot2Config.displayName)")
+    }
+
+    func startListening() {
+        stopListening()
+        log("[Speechy] Attempting to start hotkey listener...")
+
+        let eventMask = 1 << CGEventType.flagsChanged.rawValue
+
+        let callback: CGEventTapCallBack = { _, type, event, refcon in
+            let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon!).takeUnretainedValue()
+            return manager.handleEvent(type: type, event: event)
+        }
+
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: CGEventMask(eventMask),
+            callback: callback,
+            userInfo: Unmanaged.passUnretained(self).toOpaque()
+        ) else {
+            log("[Speechy] ERROR: Failed to create event tap - need Accessibility permission")
+            showAccessibilityPrompt()
+            return
+        }
+
+        eventTap = tap
+        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        log("[Speechy] Hotkey listener started successfully")
+    }
+
+    private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        let flags = event.flags
+
+        let slot1Match = slot1Config.isEnabled && matchesConfig(flags: flags, config: slot1Config)
+        let slot2Match = slot2Config.isEnabled && matchesConfig(flags: flags, config: slot2Config)
+
+        if slot1Match && activeSlot == nil && !isRecording {
+            activeSlot = 1
+            startDelayTimer(language: slot1Config.language, flag: getFlag(for: slot1Config.language))
+        } else if slot2Match && activeSlot == nil && !isRecording {
+            activeSlot = 2
+            startDelayTimer(language: slot2Config.language, flag: getFlag(for: slot2Config.language))
+        } else if activeSlot != nil {
+            let activeConfig = activeSlot == 1 ? slot1Config : slot2Config
+            if !matchesConfig(flags: flags, config: activeConfig) {
+                if isRecording {
+                    isRecording = false
+                    activeSlot = nil
+                    DispatchQueue.main.async { self.onRecordingStop?() }
+                } else {
+                    delayTimer?.invalidate()
+                    delayTimer = nil
+                    activeSlot = nil
+                }
+            }
+        }
+
+        return Unmanaged.passUnretained(event)
+    }
+
+    private func matchesConfig(flags: CGEventFlags, config: HotkeyConfig) -> Bool {
+        let required = config.modifierFlags
+        if required.rawValue == 0 { return false }
+
+        if required.contains(.maskControl) && !flags.contains(.maskControl) { return false }
+        if required.contains(.maskAlternate) && !flags.contains(.maskAlternate) { return false }
+        if required.contains(.maskShift) && !flags.contains(.maskShift) { return false }
+        if required.contains(.maskCommand) && !flags.contains(.maskCommand) { return false }
+
+        return true
+    }
+
+    private func startDelayTimer(language: String, flag: String) {
+        delayTimer?.invalidate()
+        delayTimer = Timer.scheduledTimer(withTimeInterval: activationDelay, repeats: false) { [weak self] _ in
+            guard let self = self, self.activeSlot != nil else { return }
+            self.isRecording = true
+            log("[Speechy] Delay passed, starting recording")
+            DispatchQueue.main.async {
+                self.onRecordingStart?(language, flag)
+            }
+        }
+    }
+
+    private func getFlag(for language: String) -> String {
+        supportedLanguages.first { $0.code == language }?.flag ?? "🎙️"
+    }
+
+    private var permissionCheckTimer: Timer?
+
+    private func showAccessibilityPrompt() {
+        DispatchQueue.main.async { [weak self] in
+            self?.startPermissionPolling()
+
+            let alert = NSAlert()
+            alert.messageText = "Accessibility Permission Required"
+            alert.informativeText = "Speechy needs Accessibility permission to detect hotkeys. Please enable it in System Settings > Privacy & Security > Accessibility.\n\nThe app will start automatically once permission is granted."
+            alert.addButton(withTitle: "Open Settings")
+            alert.addButton(withTitle: "Cancel")
+            if alert.runModal() == .alertFirstButtonReturn {
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+            }
+        }
+    }
+
+    private func startPermissionPolling() {
+        permissionCheckTimer?.invalidate()
+        permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            let testMask = 1 << CGEventType.flagsChanged.rawValue
+            if let tap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: CGEventMask(testMask),
+                callback: { _, _, event, _ in Unmanaged.passUnretained(event) },
+                userInfo: nil
+            ) {
+                CFMachPortInvalidate(tap)
+                self.permissionCheckTimer?.invalidate()
+                self.permissionCheckTimer = nil
+                log("[Speechy] Accessibility permission granted, starting listener...")
+                self.startListening()
+            }
+        }
+    }
+
+    func stopListening() {
+        permissionCheckTimer?.invalidate()
+        permissionCheckTimer = nil
+        delayTimer?.invalidate()
+        delayTimer = nil
+        if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: false) }
+        if let source = runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes) }
+        eventTap = nil
+        runLoopSource = nil
+    }
+}
+
+// MARK: - Audio Recorder
+class AudioRecorder {
+    private var recorder: AVAudioRecorder?
+    private var tempURL: URL?
+
+    func startRecording() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".wav")
+        tempURL = url
+
+        let settings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatLinearPCM),
+            AVSampleRateKey: 16000.0,
+            AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false
+        ]
+
+        do {
+            recorder = try AVAudioRecorder(url: url, settings: settings)
+            recorder?.record()
+        } catch {
+            log("[Speechy] Recording error: \(error)")
+        }
+    }
+
+    func stopRecording(completion: @escaping (URL?) -> Void) {
+        recorder?.stop()
+        recorder = nil
+        completion(tempURL)
+    }
+}
+
+// MARK: - Whisper Transcriber
+class WhisperTranscriber {
+    private let whisperPath = "/opt/homebrew/opt/whisper-cpp/bin/whisper-cli"
+    private var currentModel: ModelType = .fast
+
+    // Patterns to filter out (music, silence, non-speech)
+    private let nonSpeechPatterns: [String] = [
+        "[BLANK_AUDIO]",
+        "[MUSIC]",
+        "[MÜZİK]",
+        "(Müzik)",
+        "(müzik)",
+        "(Music)",
+        "(music)",
+        "[Müzik]",
+        "[müzik]",
+        "[Music]",
+        "[music]",
+        "(Gerilim müziği)",
+        "(Hareketli müzik)",
+        "[MÜZİK ÇALIYOR]",
+        "[...müzik çalıyor...]",
+        "(...müzik çalıyor...)",
+        "[Sessizlik]",
+        "(Sessizlik)",
+        "[SILENCE]",
+        "(silence)",
+        "[Alkış]",
+        "(Alkış)",
+        "[APPLAUSE]",
+        "♪",
+        "🎵",
+    ]
+
+    init() {
+        updateModel()
+    }
+
+    func updateModel() {
+        currentModel = SettingsManager.shared.selectedModel
+        log("[Speechy] Model changed to: \(currentModel.displayName)")
+    }
+
+    private func showModelNotFoundNotification(model: ModelType) {
+        let alert = NSAlert()
+        alert.messageText = "Model Not Downloaded"
+        alert.informativeText = "The \(model.displayName) model needs to be downloaded first. Go to Settings to download it."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Open Settings")
+        alert.addButton(withTitle: "OK")
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            // Post notification to open settings
+            NotificationCenter.default.post(name: NSNotification.Name("OpenSettings"), object: nil)
+        }
+    }
+
+    private var modelPath: String {
+        return ModelDownloadManager.shared.modelPath(currentModel)
+    }
+
+    private func filterNonSpeech(_ text: String) -> String? {
+        var filtered = text
+
+        // Remove non-speech patterns
+        for pattern in nonSpeechPatterns {
+            filtered = filtered.replacingOccurrences(of: pattern, with: "")
+        }
+
+        // Remove anything in brackets that looks like a description: [something], (something)
+        // But keep actual speech content
+        let bracketPattern = #"\[(?:[^\]]*(?:müzik|music|audio|blank|silence|alkış|applause)[^\]]*)\]"#
+        let parenPattern = #"\((?:[^\)]*(?:müzik|music|audio|blank|silence|alkış|applause)[^\)]*)\)"#
+
+        if let bracketRegex = try? NSRegularExpression(pattern: bracketPattern, options: .caseInsensitive) {
+            filtered = bracketRegex.stringByReplacingMatches(in: filtered, options: [], range: NSRange(filtered.startIndex..., in: filtered), withTemplate: "")
+        }
+
+        if let parenRegex = try? NSRegularExpression(pattern: parenPattern, options: .caseInsensitive) {
+            filtered = parenRegex.stringByReplacingMatches(in: filtered, options: [], range: NSRange(filtered.startIndex..., in: filtered), withTemplate: "")
+        }
+
+        // Clean up whitespace
+        filtered = filtered.trimmingCharacters(in: .whitespacesAndNewlines)
+        filtered = filtered.replacingOccurrences(of: "  ", with: " ")
+
+        // If the result is too short or empty, return nil
+        if filtered.isEmpty || filtered.count < 2 {
+            return nil
+        }
+
+        return filtered
+    }
+
+    func transcribe(audioURL: URL, language: String, completion: @escaping (String?) -> Void) {
+        // Capture current model at transcription time
+        let modelToUse = currentModel
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int) ?? 0
+            log("[Speechy] Whisper - lang: \(language), model: \(modelToUse.rawValue), audio size: \(fileSize) bytes")
+
+            let modelPath = ModelDownloadManager.shared.modelPath(modelToUse)
+
+            guard ModelDownloadManager.shared.modelExists(modelToUse) else {
+                log("[Speechy] ERROR: Model not found at \(modelPath)")
+                DispatchQueue.main.async {
+                    self.showModelNotFoundNotification(model: modelToUse)
+                }
+                completion(nil)
+                return
+            }
+
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: self.whisperPath)
+            process.arguments = ["-m", modelPath, "-l", language, "-nt", "-np", audioURL.path]
+
+            let outPipe = Pipe()
+            let errPipe = Pipe()
+            process.standardOutput = outPipe
+            process.standardError = errPipe
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+
+                let exitCode = process.terminationStatus
+                let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+                let rawText = (String(data: data, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+                log("[Speechy] Whisper exit: \(exitCode)")
+                log("[Speechy] Raw result: \(rawText.isEmpty ? "(empty)" : String(rawText.prefix(80)))")
+
+                // Filter out non-speech content
+                let filteredText = self.filterNonSpeech(rawText)
+
+                if let text = filteredText {
+                    log("[Speechy] Filtered result: \(text.prefix(80))")
+                    completion(text)
+                } else {
+                    log("[Speechy] Result filtered out (non-speech)")
+                    completion(nil)
+                }
+            } catch {
+                log("[Speechy] Whisper error: \(error)")
+                completion(nil)
+            }
+        }
+    }
+}
+
+// MARK: - Main
+let app = NSApplication.shared
+let delegate = AppDelegate()
+app.delegate = delegate
+app.run()
