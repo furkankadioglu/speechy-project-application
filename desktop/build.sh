@@ -28,8 +28,8 @@ swiftc -O \
     -sdk $(xcrun --show-sdk-path) \
     -framework Cocoa \
     -framework AVFoundation \
-    -framework Speech \
     -framework Carbon \
+    -framework CoreAudio \
     -o "$MACOS_DIR/SpeechToText-arm64" \
     "$SRC_DIR/main.swift"
 
@@ -39,8 +39,8 @@ swiftc -O \
     -sdk $(xcrun --show-sdk-path) \
     -framework Cocoa \
     -framework AVFoundation \
-    -framework Speech \
     -framework Carbon \
+    -framework CoreAudio \
     -o "$MACOS_DIR/SpeechToText-x86_64" \
     "$SRC_DIR/main.swift"
 

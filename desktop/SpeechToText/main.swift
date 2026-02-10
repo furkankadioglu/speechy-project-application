@@ -1,6 +1,7 @@
 import Cocoa
 import SwiftUI
 import AVFoundation
+import CoreAudio
 import Carbon.HIToolbox
 import Combine
 import ServiceManagement
@@ -99,6 +100,134 @@ enum ModelType: String, Codable, CaseIterable {
         case .accurate: return 500_000_000
         case .precise: return 1_500_000_000
         }
+    }
+}
+
+// MARK: - Audio Input Device
+struct AudioInputDevice: Identifiable, Hashable {
+    let id: AudioDeviceID
+    let uid: String
+    let name: String
+    let isDefault: Bool
+
+    static let systemDefault = AudioInputDevice(id: 0, uid: "system_default", name: "System Default", isDefault: true)
+}
+
+// MARK: - Audio Device Manager
+class AudioDeviceManager: ObservableObject {
+    static let shared = AudioDeviceManager()
+
+    @Published var availableDevices: [AudioInputDevice] = [AudioInputDevice.systemDefault]
+
+    private var listenerBlock: AudioObjectPropertyListenerBlock?
+
+    init() {
+        refreshDevices()
+        installDeviceChangeListener()
+    }
+
+    func refreshDevices() {
+        var devices = [AudioInputDevice.systemDefault]
+
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        var dataSize: UInt32 = 0
+        var status = AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &dataSize)
+        guard status == noErr else {
+            log("[Speechy] Failed to get audio devices data size: \(status)")
+            DispatchQueue.main.async { self.availableDevices = devices }
+            return
+        }
+
+        let deviceCount = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+        var deviceIDs = [AudioDeviceID](repeating: 0, count: deviceCount)
+        status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &dataSize, &deviceIDs)
+        guard status == noErr else {
+            log("[Speechy] Failed to get audio devices: \(status)")
+            DispatchQueue.main.async { self.availableDevices = devices }
+            return
+        }
+
+        for deviceID in deviceIDs {
+            // Check if device has input channels
+            var streamAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreamConfiguration,
+                mScope: kAudioDevicePropertyScopeInput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+
+            var streamSize: UInt32 = 0
+            status = AudioObjectGetPropertyDataSize(deviceID, &streamAddress, 0, nil, &streamSize)
+            guard status == noErr, streamSize > 0 else { continue }
+
+            let bufferListPointer = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: 1)
+            defer { bufferListPointer.deallocate() }
+            status = AudioObjectGetPropertyData(deviceID, &streamAddress, 0, nil, &streamSize, bufferListPointer)
+            guard status == noErr else { continue }
+
+            let bufferList = UnsafeMutableAudioBufferListPointer(bufferListPointer)
+            let inputChannels = bufferList.reduce(0) { $0 + Int($1.mNumberChannels) }
+            guard inputChannels > 0 else { continue }
+
+            // Get device name
+            var nameAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceNameCFString,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var nameRef: Unmanaged<CFString>?
+            var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+            AudioObjectGetPropertyData(deviceID, &nameAddress, 0, nil, &nameSize, &nameRef)
+            let name = nameRef?.takeRetainedValue() as String? ?? "Unknown"
+
+            // Get device UID
+            var uidAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceUID,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var uidRef: Unmanaged<CFString>?
+            var uidSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+            AudioObjectGetPropertyData(deviceID, &uidAddress, 0, nil, &uidSize, &uidRef)
+            let uid = uidRef?.takeRetainedValue() as String? ?? ""
+            guard !uid.isEmpty else { continue }
+
+            devices.append(AudioInputDevice(id: deviceID, uid: uid, name: name, isDefault: false))
+        }
+
+        log("[Speechy] Found \(devices.count - 1) input device(s)")
+        DispatchQueue.main.async {
+            self.availableDevices = devices
+        }
+    }
+
+    func installDeviceChangeListener() {
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            log("[Speechy] Audio device configuration changed")
+            self?.refreshDevices()
+        }
+        listenerBlock = block
+
+        AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, DispatchQueue.main, block)
+    }
+
+    func deviceID(forUID uid: String) -> AudioDeviceID? {
+        if uid == "system_default" { return nil }
+        guard let device = availableDevices.first(where: { $0.uid == uid }), device.id != 0 else {
+            log("[Speechy] Device UID '\(uid)' not found in available devices")
+            return nil
+        }
+        return device.id
     }
 }
 
@@ -246,6 +375,7 @@ class SettingsManager: ObservableObject {
     @Published var activationDelay: Double
     @Published var selectedModel: ModelType
     @Published var history: [TranscriptionEntry]
+    @Published var selectedInputDeviceUID: String
     @Published var hasCompletedOnboarding: Bool
     @Published var launchAtLogin: Bool {
         didSet {
@@ -288,6 +418,8 @@ class SettingsManager: ObservableObject {
             _history = Published(initialValue: [])
         }
 
+        _selectedInputDeviceUID = Published(initialValue: defaults.string(forKey: "selectedInputDeviceUID") ?? "system_default")
+
         _hasCompletedOnboarding = Published(initialValue: defaults.bool(forKey: "hasCompletedOnboarding"))
 
         // Check current launch at login status
@@ -306,6 +438,8 @@ class SettingsManager: ObservableObject {
             .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
         $selectedModel.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
+        $selectedInputDeviceUID.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
         $hasCompletedOnboarding.dropFirst()
             .sink { val in UserDefaults.standard.set(val, forKey: "hasCompletedOnboarding") }.store(in: &cancellables)
     }
@@ -316,6 +450,7 @@ class SettingsManager: ObservableObject {
         if let data = try? JSONEncoder().encode(slot2) { defaults.set(data, forKey: "slot2") }
         defaults.set(activationDelay, forKey: "activationDelay")
         defaults.set(selectedModel.rawValue, forKey: "selectedModel")
+        defaults.set(selectedInputDeviceUID, forKey: "selectedInputDeviceUID")
         if let data = try? JSONEncoder().encode(history) { defaults.set(data, forKey: "history") }
     }
 
@@ -814,6 +949,7 @@ struct SettingsView: View {
 struct SettingsTab: View {
     @ObservedObject var settings: SettingsManager
     @ObservedObject var downloadManager = ModelDownloadManager.shared
+    @ObservedObject var deviceManager = AudioDeviceManager.shared
 
     var body: some View {
         ScrollView {
@@ -894,6 +1030,56 @@ struct SettingsTab: View {
                         Text("Hold the hotkey for this duration to prevent accidental triggers")
                             .font(.caption)
                             .foregroundColor(.secondary)
+                    }
+                    .padding()
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(12)
+                }
+
+                // Section: Voice Input
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeader(icon: "mic.fill", title: "Voice Input", color: .cyan)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "waveform")
+                                .font(.system(size: 16))
+                                .foregroundColor(.cyan)
+                                .frame(width: 28)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Input Device")
+                                    .font(.subheadline.weight(.medium))
+                                Text("Select which microphone to use for recording")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+                        }
+
+                        Picker("", selection: $settings.selectedInputDeviceUID) {
+                            ForEach(deviceManager.availableDevices) { device in
+                                Text(device.name).tag(device.uid)
+                            }
+                        }
+                        .labelsHidden()
+
+                        // Warning if saved device is disconnected
+                        if settings.selectedInputDeviceUID != "system_default" &&
+                           !deviceManager.availableDevices.contains(where: { $0.uid == settings.selectedInputDeviceUID }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                    .font(.system(size: 14))
+                                Text("Selected device is disconnected. Recording will use the system default.")
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                            }
+                            .padding(10)
+                            .background(Color.orange.opacity(0.1))
+                            .cornerRadius(8)
+                        }
                     }
                     .padding()
                     .background(Color(NSColor.controlBackgroundColor))
@@ -1603,7 +1789,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async {
             self.overlayWindow.setState(.recording, flag: flag)
         }
-        audioRecorder.startRecording()
+        let uid = SettingsManager.shared.selectedInputDeviceUID
+        audioRecorder.startRecording(deviceUID: uid == "system_default" ? nil : uid)
     }
 
     func stopRecording() {
@@ -1818,34 +2005,177 @@ class HotkeyManager {
 
 // MARK: - Audio Recorder
 class AudioRecorder {
-    private var recorder: AVAudioRecorder?
-    private var tempURL: URL?
+    private var engine: AVAudioEngine?
+    private var nativeFile: AVAudioFile?
+    private var nativeURL: URL?
+    private var finalURL: URL?
+    private let writeQueue = DispatchQueue(label: "com.speechy.audiowrite")
 
-    func startRecording() {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".wav")
-        tempURL = url
+    func startRecording(deviceUID: String? = nil) {
+        let engine = AVAudioEngine()
 
-        let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatLinearPCM),
-            AVSampleRateKey: 16000.0,
-            AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 16,
-            AVLinearPCMIsFloatKey: false,
-            AVLinearPCMIsBigEndianKey: false
-        ]
+        // Set input device if specified
+        if let uid = deviceUID {
+            setInputDevice(uid: uid, on: engine)
+        }
+
+        let inputNode = engine.inputNode
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+
+        // Record in native format first, convert to whisper format after stopping
+        let nativeURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "_native.caf")
+        self.nativeURL = nativeURL
+        self.finalURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".wav")
 
         do {
-            recorder = try AVAudioRecorder(url: url, settings: settings)
-            recorder?.record()
+            nativeFile = try AVAudioFile(forWriting: nativeURL, settings: inputFormat.settings)
         } catch {
-            log("[Speechy] Recording error: \(error)")
+            log("[Speechy] Failed to create native audio file: \(error)")
+            return
+        }
+
+        // Tap captures audio and writes to file off the realtime thread
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+            guard let self = self else { return }
+            guard let channelData = buffer.floatChannelData else { return }
+            let frameLength = Int(buffer.frameLength)
+            let channelCount = Int(buffer.format.channelCount)
+
+            // Copy buffer data (buffer is only valid during this callback)
+            let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameLength)!
+            copy.frameLength = buffer.frameLength
+            for ch in 0..<channelCount {
+                memcpy(copy.floatChannelData![ch], channelData[ch], frameLength * MemoryLayout<Float>.size)
+            }
+
+            self.writeQueue.async { [weak self] in
+                try? self?.nativeFile?.write(from: copy)
+            }
+        }
+
+        do {
+            try engine.start()
+            self.engine = engine
+            log("[Speechy] AVAudioEngine started, device: \(deviceUID ?? "system default"), input format: \(inputFormat)")
+        } catch {
+            log("[Speechy] Failed to start AVAudioEngine: \(error)")
+            inputNode.removeTap(onBus: 0)
+            nativeFile = nil
+        }
+    }
+
+    private func setInputDevice(uid: String, on engine: AVAudioEngine) {
+        let deviceManager = AudioDeviceManager.shared
+        guard let deviceID = deviceManager.deviceID(forUID: uid) else {
+            log("[Speechy] Could not resolve device UID '\(uid)', using system default")
+            return
+        }
+
+        var deviceIDValue = deviceID
+        let status = AudioUnitSetProperty(
+            engine.inputNode.audioUnit!,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &deviceIDValue,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+
+        if status == noErr {
+            log("[Speechy] Set input device to ID \(deviceID) (UID: \(uid))")
+        } else {
+            log("[Speechy] Failed to set input device (status: \(status)), using system default")
         }
     }
 
     func stopRecording(completion: @escaping (URL?) -> Void) {
-        recorder?.stop()
-        recorder = nil
-        completion(tempURL)
+        engine?.inputNode.removeTap(onBus: 0)
+        engine?.stop()
+        engine = nil
+
+        let nativeFile = self.nativeFile
+        let nativeURL = self.nativeURL
+        let finalURL = self.finalURL
+        self.nativeFile = nil
+
+        guard let nativeURL = nativeURL, let finalURL = finalURL else {
+            completion(nil)
+            return
+        }
+
+        // Wait for pending writes to finish, then convert offline
+        writeQueue.async {
+            // Keep reference alive until writes complete
+            _ = nativeFile
+
+            self.convertToWhisperFormat(sourceURL: nativeURL, destinationURL: finalURL)
+            try? FileManager.default.removeItem(at: nativeURL)
+            completion(finalURL)
+        }
+    }
+
+    private func convertToWhisperFormat(sourceURL: URL, destinationURL: URL) {
+        do {
+            let sourceFile = try AVAudioFile(forReading: sourceURL)
+            let sourceFormat = sourceFile.processingFormat
+
+            guard let outputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false) else {
+                log("[Speechy] Failed to create output format")
+                return
+            }
+            guard let converter = AVAudioConverter(from: sourceFormat, to: outputFormat) else {
+                log("[Speechy] Failed to create converter \(sourceFormat) -> \(outputFormat)")
+                return
+            }
+
+            let outputSettings: [String: Any] = [
+                AVFormatIDKey: Int(kAudioFormatLinearPCM),
+                AVSampleRateKey: 16000.0,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false
+            ]
+            let outputFile = try AVAudioFile(forWriting: destinationURL, settings: outputSettings)
+
+            let bufferSize: AVAudioFrameCount = 4096
+            let ratio = 16000.0 / sourceFormat.sampleRate
+
+            while sourceFile.framePosition < sourceFile.length {
+                let remainingFrames = AVAudioFrameCount(sourceFile.length - sourceFile.framePosition)
+                let framesToRead = min(bufferSize, remainingFrames)
+                guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: framesToRead) else { break }
+                try sourceFile.read(into: inputBuffer)
+
+                let outputFrames = max(AVAudioFrameCount(Double(inputBuffer.frameLength) * ratio) + 1, 1)
+                guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: outputFrames) else { break }
+
+                var error: NSError?
+                var inputConsumed = false
+                converter.convert(to: outputBuffer, error: &error) { _, outStatus in
+                    if !inputConsumed {
+                        inputConsumed = true
+                        outStatus.pointee = .haveData
+                        return inputBuffer
+                    }
+                    outStatus.pointee = .noDataNow
+                    return nil
+                }
+
+                if let error = error {
+                    log("[Speechy] Conversion error: \(error)")
+                    break
+                }
+
+                if outputBuffer.frameLength > 0 {
+                    try outputFile.write(from: outputBuffer)
+                }
+            }
+
+            log("[Speechy] Audio converted: \(sourceFile.length) frames @ \(sourceFormat.sampleRate)Hz -> 16kHz WAV")
+        } catch {
+            log("[Speechy] Format conversion failed: \(error)")
+        }
     }
 }
 
