@@ -14,7 +14,8 @@ speechy-project-application/
 
 Menu bar app that transcribes speech to text via configurable hotkeys and automatically pastes the result.
 
-- **Hotkeys**: 4 configurable slots — 2 push-to-talk, 2 toggle-to-talk
+- **Hotkeys**: 4 configurable slots — 2 push-to-talk, 2 toggle-to-talk (Escape to cancel)
+- **Live Waveform**: Real-time audio level visualization in overlay during recording
 - **Languages**: 28 languages with per-slot language selection
 - **Models**: 3 tiers — Fast (Base ~150MB), Accurate (Small ~500MB), Precise (Medium ~1.5GB)
 - **Audio Input**: Selectable input device with live device change detection

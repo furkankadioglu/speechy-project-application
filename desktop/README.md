@@ -27,7 +27,7 @@ swiftc main.swift -o SpeechyApp \
 
 ## Architecture
 
-Single-file app (`SpeechToText/main.swift`, ~2400 lines):
+Single-file app (`SpeechToText/main.swift`, ~2500 lines):
 
 ```
 AppDelegate (NSApplicationDelegate)
@@ -35,7 +35,8 @@ AppDelegate (NSApplicationDelegate)
 ├── HotkeyManager (CGEvent tap for modifier keys)
 ├── AudioRecorder (AVAudioEngine → WAV file)
 ├── WhisperTranscriber (whisper-cli subprocess)
-├── OverlayWindow (recording/processing indicator)
+├── OverlayWindow (recording/processing indicator with waveform)
+├── WaveformView (real-time audio level visualization)
 ├── SettingsManager (UserDefaults persistence)
 ├── AudioDeviceManager (CoreAudio device enumeration)
 └── ModelDownloadManager (HuggingFace model download)
@@ -54,7 +55,7 @@ Views (SwiftUI hosted in NSWindow):
 ### Hotkey System
 - 4 configurable slots with independent modifier key combinations
 - Slot 1-2: Push-to-talk (hold modifier to record, release to stop)
-- Slot 3-4: Toggle-to-talk (press modifier to start, press again to stop)
+- Slot 3-4: Toggle-to-talk (press modifier to start, press again or Escape to stop)
 - Activation delay (default 150ms) prevents accidental triggers
 - Per-slot language selection from 28 supported languages
 
@@ -74,10 +75,15 @@ Base model auto-downloads on first launch if no models exist.
 - Converts offline to 16kHz mono 16-bit WAV for whisper-cli
 - Selectable input device (auto-refreshes on device changes)
 
+### Overlay & Waveform
+- Recording state: flag emoji + animated waveform bars (7 vertical bars visualizing real-time audio RMS levels)
+- Processing state: spinner animation
+- Window floats at bottom center of screen (100x140px, rounded dark background)
+
 ### Transcription Flow
-1. Hotkey detected → overlay shows flag emoji
-2. Audio recording starts
-3. Hotkey released/toggled → overlay shows spinner
+1. Hotkey detected → overlay shows flag emoji with waveform bars
+2. Audio recording starts, waveform animates with real-time audio levels
+3. Hotkey released/toggled or Escape pressed → overlay shows spinner
 4. Audio saved to temp WAV, passed to `whisper-cli`
 5. Non-speech patterns filtered (music, silence, applause markers)
 6. Result copied to clipboard and auto-pasted (Cmd+V)
