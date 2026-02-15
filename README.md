@@ -16,7 +16,7 @@ Menu bar app that transcribes speech to text via configurable hotkeys and automa
 
 - **Hotkeys**: 4 configurable slots — 2 push-to-talk, 2 toggle-to-talk (Escape to cancel)
 - **Live Waveform**: Real-time audio level visualization in overlay during recording
-- **Languages**: 28 languages with per-slot language selection
+- **Languages**: 29 languages with per-slot language selection
 - **Models**: 3 tiers — Fast (Base ~150MB), Accurate (Small ~500MB), Precise (Medium ~1.5GB)
 - **Audio Input**: Selectable input device with live device change detection
 - **Auto-paste**: Transcribed text is copied to clipboard and pasted automatically (Cmd+V)
@@ -70,6 +70,7 @@ Both apps follow the same pattern:
 # Desktop
 brew install whisper-cpp
 cd desktop && ./build.sh
+./test.sh                             # Run 58 tests
 open /Applications/Speechy.app
 
 # Mobile

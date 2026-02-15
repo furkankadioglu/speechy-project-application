@@ -468,6 +468,21 @@ class SettingsManager: ObservableObject {
             .sink { val in UserDefaults.standard.set(val, forKey: "hasCompletedOnboarding") }.store(in: &cancellables)
     }
 
+    #if TESTING
+    init(forTesting: Bool) {
+        _slot1 = Published(initialValue: HotkeyConfig(modifiers: CGEventFlags.maskAlternate.rawValue, language: "en"))
+        _slot2 = Published(initialValue: HotkeyConfig(modifiers: CGEventFlags.maskShift.rawValue, language: "tr"))
+        _slot3 = Published(initialValue: HotkeyConfig(modifiers: CGEventFlags.maskControl.rawValue, language: "en", isEnabled: true, mode: .toggleToTalk))
+        _slot4 = Published(initialValue: HotkeyConfig(modifiers: CGEventFlags.maskControl.rawValue | CGEventFlags.maskShift.rawValue, language: "tr", isEnabled: true, mode: .toggleToTalk))
+        _activationDelay = Published(initialValue: 0.15)
+        _selectedModel = Published(initialValue: .fast)
+        _history = Published(initialValue: [])
+        _selectedInputDeviceUID = Published(initialValue: "system_default")
+        _hasCompletedOnboarding = Published(initialValue: false)
+        _launchAtLogin = Published(initialValue: false)
+    }
+    #endif
+
     private func save() {
         let defaults = UserDefaults.standard
         if let data = try? JSONEncoder().encode(slot1) { defaults.set(data, forKey: "slot1") }
@@ -922,10 +937,16 @@ struct SettingsView: View {
                         action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 0 } }
                     )
                     SidebarItem(
-                        title: "History",
-                        icon: "clock.fill",
+                        title: "Advanced",
+                        icon: "slider.horizontal.3",
                         isSelected: selectedTab == 1,
                         action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 1 } }
+                    )
+                    SidebarItem(
+                        title: "History",
+                        icon: "clock.fill",
+                        isSelected: selectedTab == 2,
+                        action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 2 } }
                     )
                 }
                 .padding(.horizontal, 8)
@@ -960,9 +981,12 @@ struct SettingsView: View {
 
             // Main Content
             VStack(spacing: 0) {
-                if selectedTab == 0 {
+                switch selectedTab {
+                case 0:
                     SettingsTab(settings: settings)
-                } else {
+                case 1:
+                    AdvancedTab(settings: settings)
+                default:
                     HistoryTab(settings: settings)
                 }
             }
@@ -974,8 +998,6 @@ struct SettingsView: View {
 
 struct SettingsTab: View {
     @ObservedObject var settings: SettingsManager
-    @ObservedObject var downloadManager = ModelDownloadManager.shared
-    @ObservedObject var deviceManager = AudioDeviceManager.shared
 
     var body: some View {
         ScrollView {
@@ -1009,7 +1031,20 @@ struct SettingsTab: View {
                         set: { settings.slot4 = $0 }
                     ), accentColor: .red)
                 }
+            }
+            .padding()
+        }
+    }
+}
 
+struct AdvancedTab: View {
+    @ObservedObject var settings: SettingsManager
+    @ObservedObject var downloadManager = ModelDownloadManager.shared
+    @ObservedObject var deviceManager = AudioDeviceManager.shared
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
                 // Section: Model Selection
                 VStack(alignment: .leading, spacing: 12) {
                     SectionHeader(icon: "cpu", title: "AI Model", color: .purple)
@@ -1588,9 +1623,14 @@ struct ModifierToggle: View {
 
 // MARK: - Waveform View
 class WaveformView: NSView {
-    private let barCount = 7
-    private var levels: [Float] = Array(repeating: 0, count: 7)
-    private var barLayers: [CALayer] = []
+    private let barCount = 11
+    private let weights: [Float] = [0.3, 0.4, 0.55, 0.7, 0.85, 1.0, 0.85, 0.7, 0.55, 0.4, 0.3]
+    private var currentLevel: Float = 0
+    private var barLayers: [CAGradientLayer] = []
+    private var glowLayers: [CALayer] = []
+
+    private let turquoise = NSColor(red: 0/255, green: 191/255, blue: 165/255, alpha: 1.0)
+    private let green = NSColor(red: 76/255, green: 175/255, blue: 80/255, alpha: 1.0)
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -1602,66 +1642,154 @@ class WaveformView: NSView {
 
     private func setupBars() {
         let barWidth: CGFloat = 4
-        let spacing: CGFloat = 3
+        let spacing: CGFloat = 2.5
         let totalWidth = CGFloat(barCount) * barWidth + CGFloat(barCount - 1) * spacing
         let startX = (bounds.width - totalWidth) / 2
 
         for i in 0..<barCount {
-            let bar = CALayer()
-            bar.backgroundColor = NSColor.white.withAlphaComponent(0.7).cgColor
-            bar.cornerRadius = 2
             let x = startX + CGFloat(i) * (barWidth + spacing)
-            bar.frame = CGRect(x: x, y: 0, width: barWidth, height: 2)
+
+            // Glow layer behind bar
+            let glow = CALayer()
+            glow.backgroundColor = turquoise.withAlphaComponent(0.4).cgColor
+            glow.cornerRadius = 2
+            glow.shadowColor = turquoise.cgColor
+            glow.shadowRadius = 3
+            glow.shadowOpacity = 0.4
+            glow.shadowOffset = .zero
+            glow.frame = CGRect(x: x, y: (bounds.height - 3) / 2, width: barWidth, height: 3)
+            layer?.addSublayer(glow)
+            glowLayers.append(glow)
+
+            // Gradient bar
+            let bar = CAGradientLayer()
+            bar.colors = [turquoise.cgColor, green.cgColor]
+            bar.startPoint = CGPoint(x: 0.5, y: 0)
+            bar.endPoint = CGPoint(x: 0.5, y: 1)
+            bar.cornerRadius = 2
+            bar.frame = CGRect(x: x, y: (bounds.height - 3) / 2, width: barWidth, height: 3)
             layer?.addSublayer(bar)
             barLayers.append(bar)
         }
     }
 
     func updateLevel(_ level: Float) {
-        // Shift levels left, add new level at end
-        for i in 0..<(barCount - 1) {
-            levels[i] = levels[i + 1]
-        }
-        levels[barCount - 1] = level
+        currentLevel = level
+        let maxHeight = bounds.height
 
-        let maxBarHeight = bounds.height
         CATransaction.begin()
-        CATransaction.setAnimationDuration(0.08)
+        CATransaction.setAnimationDuration(0.12)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+
         for i in 0..<barCount {
-            // Map RMS (typically 0..0.3) to bar height
-            let normalized = min(levels[i] / 0.15, 1.0)
-            let height = max(CGFloat(normalized) * maxBarHeight, 2)
+            let normalized = min(level * weights[i] / 0.15, 1.0)
+            let height = max(CGFloat(normalized) * maxHeight, 3)
+            let y = (maxHeight - height) / 2
+
             barLayers[i].frame = CGRect(
                 x: barLayers[i].frame.origin.x,
-                y: 0,
+                y: y,
                 width: barLayers[i].frame.width,
                 height: height
             )
+
+            // Blend gradient based on height ratio
+            let ratio = height / maxHeight
+            let midColor = NSColor(
+                red: turquoise.redComponent * (1 - ratio) + green.redComponent * ratio,
+                green: turquoise.greenComponent * (1 - ratio) + green.greenComponent * ratio,
+                blue: turquoise.blueComponent * (1 - ratio) + green.blueComponent * ratio,
+                alpha: 1.0
+            )
+            barLayers[i].colors = [turquoise.cgColor, midColor.cgColor]
+
+            glowLayers[i].frame = CGRect(
+                x: glowLayers[i].frame.origin.x,
+                y: y,
+                width: glowLayers[i].frame.width,
+                height: height
+            )
         }
+
         CATransaction.commit()
     }
 
     func reset() {
-        levels = Array(repeating: 0, count: barCount)
+        currentLevel = 0
         updateLevel(0)
+    }
+}
+
+// MARK: - Speechy Icon View
+class SpeechyIconView: NSView {
+    private let circleLayer = CAGradientLayer()
+    private let micImageView = NSImageView()
+    private let badgeLabel = NSTextField(labelWithString: "")
+    private let badgeBg = NSView()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        setupIcon()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func setupIcon() {
+        // Gradient circle background
+        circleLayer.frame = CGRect(x: 0, y: 0, width: 48, height: 48)
+        circleLayer.cornerRadius = 24
+        circleLayer.colors = [
+            NSColor(red: 0/255, green: 191/255, blue: 165/255, alpha: 1.0).cgColor,   // #00BFA5
+            NSColor(red: 33/255, green: 150/255, blue: 243/255, alpha: 1.0).cgColor    // #2196F3
+        ]
+        circleLayer.startPoint = CGPoint(x: 0, y: 0)
+        circleLayer.endPoint = CGPoint(x: 1, y: 1)
+        layer?.addSublayer(circleLayer)
+
+        // Mic icon (SF Symbol)
+        if let micImage = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: nil) {
+            let config = NSImage.SymbolConfiguration(pointSize: 24, weight: .medium)
+            micImageView.image = micImage.withSymbolConfiguration(config)
+            micImageView.contentTintColor = .white
+        }
+        micImageView.frame = NSRect(x: 12, y: 12, width: 24, height: 24)
+        addSubview(micImageView)
+
+        // Badge background (small semi-transparent circle)
+        badgeBg.wantsLayer = true
+        badgeBg.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.5).cgColor
+        badgeBg.layer?.cornerRadius = 10
+        badgeBg.frame = NSRect(x: 28, y: -4, width: 20, height: 20)
+        addSubview(badgeBg)
+
+        // Flag badge
+        badgeLabel.font = NSFont.systemFont(ofSize: 12)
+        badgeLabel.alignment = .center
+        badgeLabel.frame = NSRect(x: 28, y: -4, width: 20, height: 20)
+        addSubview(badgeLabel)
+    }
+
+    func setFlag(_ flag: String) {
+        badgeLabel.stringValue = flag
+        badgeBg.isHidden = flag.isEmpty
+        badgeLabel.isHidden = flag.isEmpty
     }
 }
 
 // MARK: - Overlay Window
 class OverlayWindow: NSWindow {
-    private let iconLabel: NSTextField
+    private let speechyIcon: SpeechyIconView
     private var spinner: NSProgressIndicator?
     private let waveformView: WaveformView
 
     enum State { case hidden, recording, processing }
 
     init() {
-        iconLabel = NSTextField(labelWithString: "")
-        iconLabel.font = NSFont.systemFont(ofSize: 48)
-        iconLabel.alignment = .center
-        waveformView = WaveformView(frame: NSRect(x: 10, y: 10, width: 80, height: 30))
+        speechyIcon = SpeechyIconView(frame: NSRect(x: 36, y: 55, width: 48, height: 48))
+        waveformView = WaveformView(frame: NSRect(x: 10, y: 15, width: 100, height: 28))
 
-        let windowSize = NSSize(width: 100, height: 140)
+        let windowSize = NSSize(width: 120, height: 150)
         let screenFrame = NSScreen.main?.visibleFrame ?? .zero
         let windowOrigin = NSPoint(x: screenFrame.midX - windowSize.width / 2, y: screenFrame.minY + 80)
 
@@ -1674,12 +1802,11 @@ class OverlayWindow: NSWindow {
         self.collectionBehavior = [.canJoinAllSpaces, .stationary]
         self.ignoresMouseEvents = true
 
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 140))
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 120, height: 150))
         container.wantsLayer = true
         container.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.8).cgColor
         container.layer?.cornerRadius = 20
-        iconLabel.frame = NSRect(x: 0, y: 65, width: 100, height: 60)
-        container.addSubview(iconLabel)
+        container.addSubview(speechyIcon)
         waveformView.isHidden = true
         container.addSubview(waveformView)
         self.contentView = container
@@ -1697,23 +1824,24 @@ class OverlayWindow: NSWindow {
                 self.spinner?.stopAnimation(nil)
                 self.spinner?.removeFromSuperview()
                 self.spinner = nil
+                self.speechyIcon.isHidden = true
                 self.waveformView.isHidden = true
                 self.waveformView.reset()
             case .recording:
                 self.spinner?.removeFromSuperview()
                 self.spinner = nil
-                self.iconLabel.stringValue = flag ?? "🎙️"
-                self.iconLabel.isHidden = false
+                self.speechyIcon.setFlag(flag ?? "")
+                self.speechyIcon.isHidden = false
                 self.waveformView.isHidden = false
                 self.orderFront(nil)
             case .processing:
-                self.iconLabel.isHidden = true
+                self.speechyIcon.isHidden = true
                 self.waveformView.isHidden = true
                 self.waveformView.reset()
                 if self.spinner == nil {
                     let s = NSProgressIndicator()
                     s.style = .spinning
-                    s.frame = NSRect(x: 30, y: 50, width: 40, height: 40)
+                    s.frame = NSRect(x: 40, y: 55, width: 40, height: 40)
                     s.appearance = NSAppearance(named: .darkAqua)
                     self.contentView?.addSubview(s)
                     self.spinner = s
@@ -2129,7 +2257,7 @@ class HotkeyManager {
         return Unmanaged.passUnretained(event)
     }
 
-    private func matchesConfig(flags: CGEventFlags, config: HotkeyConfig) -> Bool {
+    func matchesConfig(flags: CGEventFlags, config: HotkeyConfig) -> Bool {
         let required = config.modifierFlags
         if required.rawValue == 0 { return false }
 
@@ -2156,7 +2284,7 @@ class HotkeyManager {
         }
     }
 
-    private func getFlag(for language: String) -> String {
+    func getFlag(for language: String) -> String {
         supportedLanguages.first { $0.code == language }?.flag ?? "🎙️"
     }
 
@@ -2462,7 +2590,7 @@ class WhisperTranscriber {
         return ModelDownloadManager.shared.modelPath(currentModel)
     }
 
-    private func filterNonSpeech(_ text: String) -> String? {
+    func filterNonSpeech(_ text: String) -> String? {
         var filtered = text
 
         // Remove non-speech patterns
@@ -2553,7 +2681,11 @@ class WhisperTranscriber {
 }
 
 // MARK: - Main
+#if TESTING
+exit(runAllTests())
+#else
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
 app.run()
+#endif
