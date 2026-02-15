@@ -1586,10 +1586,72 @@ struct ModifierToggle: View {
     }
 }
 
+// MARK: - Waveform View
+class WaveformView: NSView {
+    private let barCount = 7
+    private var levels: [Float] = Array(repeating: 0, count: 7)
+    private var barLayers: [CALayer] = []
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        setupBars()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func setupBars() {
+        let barWidth: CGFloat = 4
+        let spacing: CGFloat = 3
+        let totalWidth = CGFloat(barCount) * barWidth + CGFloat(barCount - 1) * spacing
+        let startX = (bounds.width - totalWidth) / 2
+
+        for i in 0..<barCount {
+            let bar = CALayer()
+            bar.backgroundColor = NSColor.white.withAlphaComponent(0.7).cgColor
+            bar.cornerRadius = 2
+            let x = startX + CGFloat(i) * (barWidth + spacing)
+            bar.frame = CGRect(x: x, y: 0, width: barWidth, height: 2)
+            layer?.addSublayer(bar)
+            barLayers.append(bar)
+        }
+    }
+
+    func updateLevel(_ level: Float) {
+        // Shift levels left, add new level at end
+        for i in 0..<(barCount - 1) {
+            levels[i] = levels[i + 1]
+        }
+        levels[barCount - 1] = level
+
+        let maxBarHeight = bounds.height
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.08)
+        for i in 0..<barCount {
+            // Map RMS (typically 0..0.3) to bar height
+            let normalized = min(levels[i] / 0.15, 1.0)
+            let height = max(CGFloat(normalized) * maxBarHeight, 2)
+            barLayers[i].frame = CGRect(
+                x: barLayers[i].frame.origin.x,
+                y: 0,
+                width: barLayers[i].frame.width,
+                height: height
+            )
+        }
+        CATransaction.commit()
+    }
+
+    func reset() {
+        levels = Array(repeating: 0, count: barCount)
+        updateLevel(0)
+    }
+}
+
 // MARK: - Overlay Window
 class OverlayWindow: NSWindow {
     private let iconLabel: NSTextField
     private var spinner: NSProgressIndicator?
+    private let waveformView: WaveformView
 
     enum State { case hidden, recording, processing }
 
@@ -1597,8 +1659,9 @@ class OverlayWindow: NSWindow {
         iconLabel = NSTextField(labelWithString: "")
         iconLabel.font = NSFont.systemFont(ofSize: 48)
         iconLabel.alignment = .center
+        waveformView = WaveformView(frame: NSRect(x: 10, y: 10, width: 80, height: 30))
 
-        let windowSize = NSSize(width: 100, height: 100)
+        let windowSize = NSSize(width: 100, height: 140)
         let screenFrame = NSScreen.main?.visibleFrame ?? .zero
         let windowOrigin = NSPoint(x: screenFrame.midX - windowSize.width / 2, y: screenFrame.minY + 80)
 
@@ -1611,13 +1674,19 @@ class OverlayWindow: NSWindow {
         self.collectionBehavior = [.canJoinAllSpaces, .stationary]
         self.ignoresMouseEvents = true
 
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 140))
         container.wantsLayer = true
         container.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.8).cgColor
         container.layer?.cornerRadius = 20
-        iconLabel.frame = NSRect(x: 0, y: 25, width: 100, height: 60)
+        iconLabel.frame = NSRect(x: 0, y: 65, width: 100, height: 60)
         container.addSubview(iconLabel)
+        waveformView.isHidden = true
+        container.addSubview(waveformView)
         self.contentView = container
+    }
+
+    func updateLevel(_ level: Float) {
+        waveformView.updateLevel(level)
     }
 
     func setState(_ state: State, flag: String? = nil) {
@@ -1628,18 +1697,23 @@ class OverlayWindow: NSWindow {
                 self.spinner?.stopAnimation(nil)
                 self.spinner?.removeFromSuperview()
                 self.spinner = nil
+                self.waveformView.isHidden = true
+                self.waveformView.reset()
             case .recording:
                 self.spinner?.removeFromSuperview()
                 self.spinner = nil
                 self.iconLabel.stringValue = flag ?? "🎙️"
                 self.iconLabel.isHidden = false
+                self.waveformView.isHidden = false
                 self.orderFront(nil)
             case .processing:
                 self.iconLabel.isHidden = true
+                self.waveformView.isHidden = true
+                self.waveformView.reset()
                 if self.spinner == nil {
                     let s = NSProgressIndicator()
                     s.style = .spinning
-                    s.frame = NSRect(x: 30, y: 30, width: 40, height: 40)
+                    s.frame = NSRect(x: 30, y: 50, width: 40, height: 40)
                     s.appearance = NSAppearance(named: .darkAqua)
                     self.contentView?.addSubview(s)
                     self.spinner = s
@@ -1838,12 +1912,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async {
             self.overlayWindow.setState(.recording, flag: flag)
         }
+        audioRecorder.onAudioLevel = { [weak self] level in
+            self?.overlayWindow.updateLevel(level)
+        }
         let uid = SettingsManager.shared.selectedInputDeviceUID
         audioRecorder.startRecording(deviceUID: uid == "system_default" ? nil : uid)
     }
 
     func stopRecording() {
         log("[Speechy] Recording stopped")
+        audioRecorder.onAudioLevel = nil
         DispatchQueue.main.async {
             self.overlayWindow.setState(.processing)
         }
@@ -1922,7 +2000,7 @@ class HotkeyManager {
         stopListening()
         log("[Speechy] Attempting to start hotkey listener...")
 
-        let eventMask = 1 << CGEventType.flagsChanged.rawValue
+        let eventMask = (1 << CGEventType.flagsChanged.rawValue) | (1 << CGEventType.keyDown.rawValue)
 
         let callback: CGEventTapCallBack = { _, type, event, refcon in
             let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon!).takeUnretainedValue()
@@ -1955,6 +2033,20 @@ class HotkeyManager {
             if let tap = eventTap {
                 CGEvent.tapEnable(tap: tap, enable: true)
                 log("[Speechy] Event tap re-enabled after disable")
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
+        // Escape key (keyCode 53) stops toggle recording
+        if type == .keyDown {
+            let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+            if keyCode == 53 && isRecording && isToggleMode {
+                log("[Speechy] Escape pressed, stopping toggle recording")
+                isRecording = false
+                isToggleMode = false
+                activeSlot = nil
+                DispatchQueue.main.async { self.onRecordingStop?() }
+                return nil // consume the Escape key
             }
             return Unmanaged.passUnretained(event)
         }
@@ -2126,6 +2218,7 @@ class AudioRecorder {
     private var nativeURL: URL?
     private var finalURL: URL?
     private let writeQueue = DispatchQueue(label: "com.speechy.audiowrite")
+    var onAudioLevel: ((Float) -> Void)?
 
     func startRecording(deviceUID: String? = nil) {
         let engine = AVAudioEngine()
@@ -2162,6 +2255,19 @@ class AudioRecorder {
             copy.frameLength = buffer.frameLength
             for ch in 0..<channelCount {
                 memcpy(copy.floatChannelData![ch], channelData[ch], frameLength * MemoryLayout<Float>.size)
+            }
+
+            // Calculate RMS audio level
+            var sumOfSquares: Float = 0
+            let ptr = channelData[0]
+            for i in 0..<frameLength {
+                let sample = ptr[i]
+                sumOfSquares += sample * sample
+            }
+            let rms = sqrtf(sumOfSquares / Float(max(frameLength, 1)))
+            let onLevel = self.onAudioLevel
+            if onLevel != nil {
+                DispatchQueue.main.async { onLevel?(rms) }
             }
 
             self.writeQueue.async { [weak self] in
