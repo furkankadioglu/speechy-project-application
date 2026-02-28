@@ -67,12 +67,14 @@ enum ModelType: String, Codable, CaseIterable {
     case fast = "base"
     case accurate = "small"
     case precise = "medium"
+    case ultimate = "large-v3"
 
     var displayName: String {
         switch self {
         case .fast: return "Fast (Base)"
         case .accurate: return "Accurate (Small)"
         case .precise: return "Precise (Medium)"
+        case .ultimate: return "Ultimate (Large)"
         }
     }
 
@@ -81,6 +83,7 @@ enum ModelType: String, Codable, CaseIterable {
         case .fast: return "Fastest, for everyday use"
         case .accurate: return "Balanced speed and accuracy"
         case .precise: return "Slowest but most accurate"
+        case .ultimate: return "Maximum accuracy, requires more resources"
         }
     }
 
@@ -97,6 +100,7 @@ enum ModelType: String, Codable, CaseIterable {
         case .fast: return "~150 MB"
         case .accurate: return "~500 MB"
         case .precise: return "~1.5 GB"
+        case .ultimate: return "~3.1 GB"
         }
     }
 
@@ -105,6 +109,7 @@ enum ModelType: String, Codable, CaseIterable {
         case .fast: return 150_000_000
         case .accurate: return 500_000_000
         case .precise: return 1_500_000_000
+        case .ultimate: return 3_100_000_000
         }
     }
 }
@@ -1682,7 +1687,7 @@ class WaveformView: NSView {
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
 
         for i in 0..<barCount {
-            let normalized = min(level * weights[i] / 0.15, 1.0)
+            let normalized = min(level * weights[i] / 0.04, 1.0)
             let height = max(CGFloat(normalized) * maxHeight, 3)
             let y = (maxHeight - height) / 2
 
