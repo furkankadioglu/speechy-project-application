@@ -1724,8 +1724,9 @@ class WaveformView: NSView {
     private var barLayers: [CAGradientLayer] = []
     private var glowLayers: [CALayer] = []
 
-    private let turquoise = NSColor(red: 0/255, green: 191/255, blue: 165/255, alpha: 1.0)
-    private let green = NSColor(red: 76/255, green: 175/255, blue: 80/255, alpha: 1.0)
+    // Match brand colors: Blue → Purple (same as Settings/Splash logo)
+    private let brandBlue = NSColor(red: 0/255, green: 122/255, blue: 255/255, alpha: 1.0)    // #007AFF
+    private let brandPurple = NSColor(red: 175/255, green: 82/255, blue: 222/255, alpha: 1.0)  // #AF52DE
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -1746,9 +1747,9 @@ class WaveformView: NSView {
 
             // Glow layer behind bar
             let glow = CALayer()
-            glow.backgroundColor = turquoise.withAlphaComponent(0.4).cgColor
+            glow.backgroundColor = brandBlue.withAlphaComponent(0.4).cgColor
             glow.cornerRadius = 2
-            glow.shadowColor = turquoise.cgColor
+            glow.shadowColor = brandBlue.cgColor
             glow.shadowRadius = 3
             glow.shadowOpacity = 0.4
             glow.shadowOffset = .zero
@@ -1758,7 +1759,7 @@ class WaveformView: NSView {
 
             // Gradient bar
             let bar = CAGradientLayer()
-            bar.colors = [turquoise.cgColor, green.cgColor]
+            bar.colors = [brandBlue.cgColor, brandPurple.cgColor]
             bar.startPoint = CGPoint(x: 0.5, y: 0)
             bar.endPoint = CGPoint(x: 0.5, y: 1)
             bar.cornerRadius = 2
@@ -1792,12 +1793,12 @@ class WaveformView: NSView {
             // Blend gradient based on height ratio
             let ratio = height / maxHeight
             let midColor = NSColor(
-                red: turquoise.redComponent * (1 - ratio) + green.redComponent * ratio,
-                green: turquoise.greenComponent * (1 - ratio) + green.greenComponent * ratio,
-                blue: turquoise.blueComponent * (1 - ratio) + green.blueComponent * ratio,
+                red: brandBlue.redComponent * (1 - ratio) + brandPurple.redComponent * ratio,
+                green: brandBlue.greenComponent * (1 - ratio) + brandPurple.greenComponent * ratio,
+                blue: brandBlue.blueComponent * (1 - ratio) + brandPurple.blueComponent * ratio,
                 alpha: 1.0
             )
-            barLayers[i].colors = [turquoise.cgColor, midColor.cgColor]
+            barLayers[i].colors = [brandBlue.cgColor, midColor.cgColor]
 
             glowLayers[i].frame = CGRect(
                 x: glowLayers[i].frame.origin.x,
@@ -1832,12 +1833,12 @@ class SpeechyIconView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     private func setupIcon() {
-        // Gradient circle background
+        // Gradient circle background (matches brand: Blue → Purple)
         circleLayer.frame = CGRect(x: 0, y: 0, width: 48, height: 48)
         circleLayer.cornerRadius = 24
         circleLayer.colors = [
-            NSColor(red: 0/255, green: 191/255, blue: 165/255, alpha: 1.0).cgColor,   // #00BFA5
-            NSColor(red: 33/255, green: 150/255, blue: 243/255, alpha: 1.0).cgColor    // #2196F3
+            NSColor(red: 0/255, green: 122/255, blue: 255/255, alpha: 1.0).cgColor,    // #007AFF (Blue)
+            NSColor(red: 175/255, green: 82/255, blue: 222/255, alpha: 1.0).cgColor     // #AF52DE (Purple)
         ]
         circleLayer.startPoint = CGPoint(x: 0, y: 0)
         circleLayer.endPoint = CGPoint(x: 1, y: 1)
