@@ -1,34 +1,45 @@
 # Waveform Sensitivity Update
 
-**Tarih:** 2026-02-28
+**Tarih:** 2026-03-01
 
 ## Sorun
 Overlay ekranındaki ses dalgası (waveform) görselleştirmesi, normal konuşma seviyesinde çok küçük çubuklar gösteriyordu. Kullanıcının bağırması gerekiyordu ki dalgalanma görünür olsun.
 
-## Kök Neden
-`WaveformView.updateLevel()` fonksiyonunda ses seviyesi (RMS) `0.15` değerine bölünerek normalize ediliyordu. Normal konuşma RMS değeri genellikle `0.01-0.05` arasında olduğundan, çubuklar maksimum yüksekliğin yalnızca %7-33'üne ulaşabiliyordu.
-
 ## Çözüm
-Normalizasyon böleni `0.15`'ten `0.04`'e düşürüldü (~3.75x hassasiyet artışı).
+İki aşamalı iyileştirme yapıldı:
 
-**Dosya:** `desktop/SpeechToText/main.swift` - `WaveformView` sınıfı, `updateLevel()` metodu
+### 1. Güçlendirilmiş Ses Seviyesi İşleme (AudioRecorder)
+Ham RMS değerine power curve uygulandı:
 
 **Öncesi:**
 ```swift
-let normalized = min(level * weights[i] / 0.15, 1.0)
+onLevel?(rms) // Ham RMS direkt gönderiliyordu
 ```
 
 **Sonrası:**
 ```swift
-let normalized = min(level * weights[i] / 0.04, 1.0)
+let boosted = powf(rms * mult, exp) // Power curve ile güçlendirme
+onLevel?(boosted)
 ```
 
-## Etki
-| Senaryo | Tahmini RMS | Önceki Çubuk Yüksekliği | Yeni Çubuk Yüksekliği |
-|---|---|---|---|
-| Fısıltı | ~0.005 | %3 | %12 |
-| Normal konuşma | ~0.02 | %13 | %50 |
-| Yüksek sesle konuşma | ~0.05 | %33 | %100 |
-| Bağırma | ~0.10+ | %67 | %100 (clamp) |
+### 2. Ayarlanabilir Waveform Parametreleri (SettingsManager + UI)
+3 parametre Advanced sekmesine slider olarak eklendi:
 
-`min(..., 1.0)` ile üst sınır korunduğundan, yüksek seslerde taşma olmaz.
+| Parametre | Varsayılan | Aralık | Açıklama |
+|---|---|---|---|
+| **Multiplier** | 100 | 100-2000 | RMS çarpanı (yüksek = daha hassas) |
+| **Exponent** | 0.45 | 0.05-0.50 | Üs değeri (düşük = düşük sesleri daha çok büyütür) |
+| **Divisor** | 1.00 | 0.10-1.00 | WaveformView normalizasyon böleni |
+
+### Formül
+```
+AudioRecorder: boosted = pow(rms × multiplier, exponent)
+WaveformView:  normalized = min(boosted × weight[i] / divisor, 1.0)
+```
+
+## Değişen Dosyalar
+- `desktop/SpeechToText/main.swift`:
+  - `SettingsManager`: 3 yeni @Published property (waveMultiplier, waveExponent, waveDivisor)
+  - `AudioRecorder.startRecording()`: Power curve boost eklendi
+  - `WaveformView.updateLevel()`: Dinamik bölen kullanımı
+  - `AdvancedTab`: "Waveform Sensitivity" UI bölümü eklendi

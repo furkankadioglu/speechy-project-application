@@ -395,6 +395,9 @@ class SettingsManager: ObservableObject {
             setLaunchAtLogin(launchAtLogin)
         }
     }
+    @Published var waveMultiplier: Double
+    @Published var waveExponent: Double
+    @Published var waveDivisor: Double
 
     var onSettingsChanged: (() -> Void)?
     private var cancellables = Set<AnyCancellable>()
@@ -454,6 +457,13 @@ class SettingsManager: ObservableObject {
             _launchAtLogin = Published(initialValue: false)
         }
 
+        let savedMultiplier = defaults.double(forKey: "waveMultiplier")
+        _waveMultiplier = Published(initialValue: savedMultiplier == 0 ? 100.0 : savedMultiplier)
+        let savedExponent = defaults.double(forKey: "waveExponent")
+        _waveExponent = Published(initialValue: savedExponent == 0 ? 0.45 : savedExponent)
+        let savedDivisor = defaults.double(forKey: "waveDivisor")
+        _waveDivisor = Published(initialValue: savedDivisor == 0 ? 1.0 : savedDivisor)
+
         // Auto-save and notify on changes
         $slot1.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
@@ -471,6 +481,12 @@ class SettingsManager: ObservableObject {
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
         $hasCompletedOnboarding.dropFirst()
             .sink { val in UserDefaults.standard.set(val, forKey: "hasCompletedOnboarding") }.store(in: &cancellables)
+        $waveMultiplier.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
+        $waveExponent.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
+        $waveDivisor.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
     }
 
     #if TESTING
@@ -485,6 +501,9 @@ class SettingsManager: ObservableObject {
         _selectedInputDeviceUID = Published(initialValue: "system_default")
         _hasCompletedOnboarding = Published(initialValue: false)
         _launchAtLogin = Published(initialValue: false)
+        _waveMultiplier = Published(initialValue: 100.0)
+        _waveExponent = Published(initialValue: 0.45)
+        _waveDivisor = Published(initialValue: 1.0)
     }
     #endif
 
@@ -498,6 +517,9 @@ class SettingsManager: ObservableObject {
         defaults.set(selectedModel.rawValue, forKey: "selectedModel")
         defaults.set(selectedInputDeviceUID, forKey: "selectedInputDeviceUID")
         if let data = try? JSONEncoder().encode(history) { defaults.set(data, forKey: "history") }
+        defaults.set(waveMultiplier, forKey: "waveMultiplier")
+        defaults.set(waveExponent, forKey: "waveExponent")
+        defaults.set(waveDivisor, forKey: "waveDivisor")
     }
 
     func addToHistory(_ text: String, language: String) {
@@ -1167,6 +1189,74 @@ struct AdvancedTab: View {
                     .cornerRadius(12)
                 }
 
+                // Section: Waveform Tuning
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeader(icon: "waveform.path.ecg", title: "Waveform Sensitivity", color: .green)
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        // Multiplier
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Multiplier")
+                                    .font(.subheadline)
+                                Spacer()
+                                Text(String(format: "%.0f", settings.waveMultiplier))
+                                    .font(.system(.subheadline, design: .rounded).bold())
+                                    .foregroundColor(.green)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(Color.green.opacity(0.15))
+                                    .cornerRadius(6)
+                            }
+                            Slider(value: $settings.waveMultiplier, in: 100...2000, step: 50)
+                                .tint(.green)
+                        }
+
+                        // Exponent
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Exponent")
+                                    .font(.subheadline)
+                                Spacer()
+                                Text(String(format: "%.2f", settings.waveExponent))
+                                    .font(.system(.subheadline, design: .rounded).bold())
+                                    .foregroundColor(.green)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(Color.green.opacity(0.15))
+                                    .cornerRadius(6)
+                            }
+                            Slider(value: $settings.waveExponent, in: 0.05...0.5, step: 0.01)
+                                .tint(.green)
+                        }
+
+                        // Divisor
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Divisor")
+                                    .font(.subheadline)
+                                Spacer()
+                                Text(String(format: "%.2f", settings.waveDivisor))
+                                    .font(.system(.subheadline, design: .rounded).bold())
+                                    .foregroundColor(.green)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(Color.green.opacity(0.15))
+                                    .cornerRadius(6)
+                            }
+                            Slider(value: $settings.waveDivisor, in: 0.1...1.0, step: 0.05)
+                                .tint(.green)
+                        }
+
+                        Text("Adjust waveform visualization sensitivity. Higher multiplier & lower exponent = more sensitive.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding()
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(12)
+                }
+
                 // Section: General
                 VStack(alignment: .leading, spacing: 12) {
                     SectionHeader(icon: "gear", title: "General", color: .gray)
@@ -1687,7 +1777,8 @@ class WaveformView: NSView {
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
 
         for i in 0..<barCount {
-            let normalized = min(level * weights[i] / 0.04, 1.0)
+            let div = Float(SettingsManager.shared.waveDivisor)
+            let normalized = min(level * weights[i] / div, 1.0)
             let height = max(CGFloat(normalized) * maxHeight, 3)
             let y = (maxHeight - height) / 2
 
@@ -2398,9 +2489,13 @@ class AudioRecorder {
                 sumOfSquares += sample * sample
             }
             let rms = sqrtf(sumOfSquares / Float(max(frameLength, 1)))
+            // Boost audio levels using configurable power curve
+            let mult = Float(SettingsManager.shared.waveMultiplier)
+            let exp = Float(SettingsManager.shared.waveExponent)
+            let boosted = powf(rms * mult, exp)
             let onLevel = self.onAudioLevel
             if onLevel != nil {
-                DispatchQueue.main.async { onLevel?(rms) }
+                DispatchQueue.main.async { onLevel?(boosted) }
             }
 
             self.writeQueue.async { [weak self] in
