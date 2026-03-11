@@ -2011,6 +2011,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyManager = HotkeyManager()
 
         setupStatusBar()
+        registerSettingsHotkey()
         setupHotkeyManager()
         requestPermissions()
 
@@ -2050,13 +2051,51 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    var settingsHotkeyRef: EventHotKeyRef?
+
     func setupStatusBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Speechy")
-            button.action = #selector(statusBarClicked)
-            button.target = self
+            // Use SF Symbol with fallback to text
+            if let img = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Speechy") {
+                img.isTemplate = true  // Adapts to light/dark menu bar
+                button.image = img
+            } else {
+                button.title = "🎙"
+            }
         }
+
+        // Build right-click menu (also used for left click)
+        let menu = NSMenu()
+        let settingsItem = NSMenuItem(title: "Settings… (⌘⇧S)", action: #selector(statusBarClicked), keyEquivalent: "")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+        menu.addItem(NSMenuItem.separator())
+        let quitItem = NSMenuItem(title: "Quit Speechy", action: #selector(quit), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+        statusItem.menu = menu
+
+        log("[Speechy] Status bar icon set up")
+    }
+
+    func registerSettingsHotkey() {
+        // Register Cmd+Shift+S as global hotkey to open settings
+        var hotKeyID = EventHotKeyID()
+        hotKeyID.signature = OSType(0x53505943)  // 'SPYC'
+        hotKeyID.id = 1
+
+        // Install handler
+        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        InstallEventHandler(GetApplicationEventTarget(), { (_, event, _) -> OSStatus in
+            NotificationCenter.default.post(name: NSNotification.Name("OpenSettings"), object: nil)
+            return noErr
+        }, 1, &eventType, nil, nil)
+
+        // S key = keycode 1, Cmd+Shift modifiers
+        let modifiers: UInt32 = UInt32(cmdKey | shiftKey)
+        RegisterEventHotKey(1, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &settingsHotkeyRef)
+        log("[Speechy] Global hotkey Cmd+Shift+S registered for settings")
     }
 
     @objc func statusBarClicked() {
@@ -2786,6 +2825,7 @@ class WhisperTranscriber {
 exit(runAllTests())
 #else
 let app = NSApplication.shared
+app.setActivationPolicy(.accessory)  // Menu bar app: no Dock icon
 let delegate = AppDelegate()
 app.delegate = delegate
 app.run()
