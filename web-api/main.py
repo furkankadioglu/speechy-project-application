@@ -14,6 +14,7 @@ from faster_whisper import WhisperModel
 # --- Configuration ---
 MODEL_SIZE = os.getenv("WHISPER_MODEL", "small")
 COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE", "int8")
+CPU_THREADS = int(os.getenv("CPU_THREADS", "2"))
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_MB", "25")) * 1024 * 1024  # 25MB default
 API_KEY = os.getenv("SPEECHY_API_KEY", "")  # Empty = no auth required
 PORT = int(os.getenv("PORT", "3002"))
@@ -36,9 +37,15 @@ model: WhisperModel = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global model
-    logger.info(f"Loading Whisper model: {MODEL_SIZE} (compute: {COMPUTE_TYPE})")
+    logger.info(f"Loading Whisper model: {MODEL_SIZE} (compute: {COMPUTE_TYPE}, threads: {CPU_THREADS})")
     start = time.time()
-    model = WhisperModel(MODEL_SIZE, device="cpu", compute_type=COMPUTE_TYPE)
+    model = WhisperModel(
+        MODEL_SIZE,
+        device="cpu",
+        compute_type=COMPUTE_TYPE,
+        cpu_threads=CPU_THREADS,
+        num_workers=1,
+    )
     logger.info(f"Model loaded in {time.time() - start:.1f}s")
     yield
     logger.info("Shutting down")
@@ -118,14 +125,23 @@ async def transcribe(
             tmp.write(content)
             tmp_path = tmp.name
 
-        # Transcribe
+        # Transcribe with max performance settings
         start = time.time()
         lang_param = None if language == "auto" else language
         segments, info = model.transcribe(
             tmp_path,
             language=lang_param,
-            beam_size=5,
-            vad_filter=True,  # Filter out silence
+            beam_size=1,                       # Greedy decoding (fastest)
+            best_of=1,                         # No sampling alternatives
+            temperature=0.0,                   # Deterministic output
+            condition_on_previous_text=False,   # Skip context conditioning
+            vad_filter=True,                   # Skip silence segments
+            vad_parameters=dict(
+                min_silence_duration_ms=300,    # Aggressive silence detection
+                speech_pad_ms=100,
+            ),
+            log_prob_threshold=-1.0,           # Accept all segments
+            no_speech_threshold=0.45,          # Faster no-speech filtering
         )
 
         # Collect segments
