@@ -114,6 +114,376 @@ enum ModelType: String, Codable, CaseIterable {
     }
 }
 
+// MARK: - License Manager
+class LicenseManager: ObservableObject {
+    static let shared = LicenseManager()
+
+    private let baseURL = "https://speechy.frkn.com.tr"
+    private let licenseKeyKey = "speechy_license_key"
+    private let licenseStatusKey = "speechy_license_status"
+    private let lastVerifiedKey = "speechy_last_verified"
+
+    @Published var isLicensed = false
+    @Published var licenseStatus: String = ""
+    @Published var licenseType: String = ""
+    @Published var expiresAt: String = ""
+
+    var storedLicenseKey: String? {
+        get { UserDefaults.standard.string(forKey: licenseKeyKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: licenseKeyKey)
+            if newValue == nil {
+                isLicensed = false
+                licenseStatus = ""
+            }
+        }
+    }
+
+    var machineID: String {
+        // Use hardware UUID as unique machine identifier
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/ioreg")
+        process.arguments = ["-rd1", "-c", "IOPlatformExpertDevice"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        try? process.run()
+        process.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8) ?? ""
+        // Extract IOPlatformUUID
+        if let range = output.range(of: "IOPlatformUUID\" = \"") {
+            let start = range.upperBound
+            if let end = output[start...].firstIndex(of: "\"") {
+                return String(output[start..<end])
+            }
+        }
+        // Fallback: generate and persist a UUID
+        if let saved = UserDefaults.standard.string(forKey: "speechy_machine_id") { return saved }
+        let newID = UUID().uuidString
+        UserDefaults.standard.set(newID, forKey: "speechy_machine_id")
+        return newID
+    }
+
+    var machineName: String {
+        Host.current().localizedName ?? "Mac"
+    }
+
+    init() {
+        // Check cached license status (for offline startup)
+        if storedLicenseKey != nil {
+            isLicensed = UserDefaults.standard.bool(forKey: licenseStatusKey)
+        }
+    }
+
+    func verifyAndActivate(licenseKey: String, completion: @escaping (Bool, String) -> Void) {
+        // First verify the license
+        let verifyURL = URL(string: "\(baseURL)/api/license/verify")!
+        var verifyRequest = URLRequest(url: verifyURL)
+        verifyRequest.httpMethod = "POST"
+        verifyRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        verifyRequest.httpBody = try? JSONSerialization.data(withJSONObject: ["license_key": licenseKey])
+        verifyRequest.timeoutInterval = 15
+
+        URLSession.shared.dataTask(with: verifyRequest) { [weak self] data, response, error in
+            guard let self = self else { return }
+
+            if let error = error {
+                log("[Speechy] License verify error: \(error.localizedDescription)")
+                DispatchQueue.main.async { completion(false, "Connection failed. Check your internet.") }
+                return
+            }
+
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                DispatchQueue.main.async { completion(false, "Invalid server response.") }
+                return
+            }
+
+            // Check for error
+            if let errorMsg = json["error"] as? String {
+                DispatchQueue.main.async { completion(false, errorMsg) }
+                return
+            }
+
+            guard let valid = json["valid"] as? Bool, valid,
+                  let license = json["license"] as? [String: Any],
+                  let status = license["status"] as? String, status == "active" else {
+                let license = json["license"] as? [String: Any]
+                let status = license?["status"] as? String ?? "invalid"
+                DispatchQueue.main.async { completion(false, "License is \(status).") }
+                return
+            }
+
+            // License is valid, now activate on this device
+            self.activate(licenseKey: licenseKey) { activated, message in
+                if activated {
+                    self.storedLicenseKey = licenseKey
+                    UserDefaults.standard.set(true, forKey: self.licenseStatusKey)
+                    UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: self.lastVerifiedKey)
+                    DispatchQueue.main.async {
+                        self.isLicensed = true
+                        self.licenseStatus = status
+                        self.licenseType = license["license_type"] as? String ?? ""
+                        self.expiresAt = license["expires_at"] as? String ?? ""
+                        completion(true, message)
+                    }
+                } else {
+                    DispatchQueue.main.async { completion(false, message) }
+                }
+            }
+        }.resume()
+    }
+
+    private func activate(licenseKey: String, completion: @escaping (Bool, String) -> Void) {
+        let activateURL = URL(string: "\(baseURL)/api/license/activate")!
+        var request = URLRequest(url: activateURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 15
+
+        let body: [String: String] = [
+            "license_key": licenseKey,
+            "machine_id": machineID,
+            "machine_label": machineName,
+            "app_platform": "macos",
+            "app_version": "1.0.0",
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                log("[Speechy] License activate error: \(error.localizedDescription)")
+                completion(false, "Activation failed. Check your internet.")
+                return
+            }
+
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                completion(false, "Invalid server response.")
+                return
+            }
+
+            if let errorMsg = json["error"] as? String {
+                completion(false, errorMsg)
+                return
+            }
+
+            if let activated = json["activated"] as? Bool, activated {
+                let msg = json["message"] as? String ?? "Activated"
+                log("[Speechy] License activated: \(msg)")
+                completion(true, msg)
+            } else {
+                completion(false, "Activation failed.")
+            }
+        }.resume()
+    }
+
+    func verifyInBackground() {
+        guard let key = storedLicenseKey else { return }
+
+        // Only re-verify every 24 hours
+        let lastVerified = UserDefaults.standard.double(forKey: lastVerifiedKey)
+        if Date().timeIntervalSince1970 - lastVerified < 86400 { return }
+
+        let verifyURL = URL(string: "\(baseURL)/api/license/verify")!
+        var request = URLRequest(url: verifyURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["license_key": key])
+        request.timeoutInterval = 15
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+            guard let self = self, let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let valid = json["valid"] as? Bool else { return }
+
+            DispatchQueue.main.async {
+                if valid {
+                    UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: self.lastVerifiedKey)
+                    UserDefaults.standard.set(true, forKey: self.licenseStatusKey)
+                    if let license = json["license"] as? [String: Any] {
+                        self.licenseType = license["license_type"] as? String ?? ""
+                        self.expiresAt = license["expires_at"] as? String ?? ""
+                    }
+                } else {
+                    log("[Speechy] License no longer valid, revoking")
+                    self.isLicensed = false
+                    UserDefaults.standard.set(false, forKey: self.licenseStatusKey)
+                }
+            }
+        }.resume()
+    }
+
+    func deactivateAndClear() {
+        guard let key = storedLicenseKey else { return }
+
+        let deactivateURL = URL(string: "\(baseURL)/api/license/deactivate")!
+        var request = URLRequest(url: deactivateURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "license_key": key,
+            "machine_id": machineID,
+        ])
+        request.timeoutInterval = 10
+
+        URLSession.shared.dataTask(with: request) { _, _, _ in
+            log("[Speechy] License deactivated on server")
+        }.resume()
+
+        storedLicenseKey = nil
+        UserDefaults.standard.set(false, forKey: licenseStatusKey)
+        isLicensed = false
+    }
+}
+
+// MARK: - License View
+struct LicenseView: View {
+    @ObservedObject var licenseManager = LicenseManager.shared
+    @State private var licenseKey = ""
+    @State private var isLoading = false
+    @State private var errorMessage = ""
+    @State private var showSuccess = false
+    var onActivated: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer()
+
+            // Logo
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: [Color.blue, Color.purple]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 80, height: 80)
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 34, weight: .medium))
+                    .foregroundColor(.white)
+            }
+            .padding(.bottom, 16)
+
+            Text("Speechy")
+                .font(.system(size: 28, weight: .bold))
+                .padding(.bottom, 4)
+
+            Text("Enter your license key to get started")
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
+                .padding(.bottom, 32)
+
+            // License key input
+            VStack(alignment: .leading, spacing: 8) {
+                Text("License Key")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary)
+
+                TextField("XXXX-XXXX-XXXX-XXXX", text: $licenseKey)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 14, design: .monospaced))
+                    .disabled(isLoading)
+                    .onSubmit { activateLicense() }
+            }
+            .frame(width: 340)
+            .padding(.bottom, 16)
+
+            // Error message
+            if !errorMessage.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.red)
+                        .font(.system(size: 12))
+                    Text(errorMessage)
+                        .font(.system(size: 12))
+                        .foregroundColor(.red)
+                }
+                .padding(.bottom, 12)
+            }
+
+            // Success message
+            if showSuccess {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                        .font(.system(size: 12))
+                    Text("License activated successfully!")
+                        .font(.system(size: 12))
+                        .foregroundColor(.green)
+                }
+                .padding(.bottom, 12)
+            }
+
+            // Activate button
+            Button(action: activateLicense) {
+                HStack(spacing: 8) {
+                    if isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .scaleEffect(0.8)
+                    }
+                    Text(isLoading ? "Verifying..." : "Activate License")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .frame(width: 340, height: 40)
+                .background(
+                    LinearGradient(
+                        gradient: Gradient(colors: [Color.blue, Color.purple]),
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .foregroundColor(.white)
+                .cornerRadius(10)
+            }
+            .buttonStyle(.plain)
+            .disabled(licenseKey.trimmingCharacters(in: .whitespaces).isEmpty || isLoading)
+            .opacity(licenseKey.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1.0)
+
+            Spacer()
+
+            // Footer
+            VStack(spacing: 4) {
+                Text("Don't have a license?")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                Button("Get a free trial at speechy.frkn.com.tr") {
+                    NSWorkspace.shared.open(URL(string: "https://speechy.frkn.com.tr")!)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.blue)
+            }
+            .padding(.bottom, 24)
+        }
+        .frame(width: 440, height: 480)
+    }
+
+    private func activateLicense() {
+        let key = licenseKey.trimmingCharacters(in: .whitespaces)
+        guard !key.isEmpty else { return }
+
+        isLoading = true
+        errorMessage = ""
+        showSuccess = false
+
+        licenseManager.verifyAndActivate(licenseKey: key) { success, message in
+            isLoading = false
+            if success {
+                showSuccess = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    onActivated()
+                }
+            } else {
+                errorMessage = message
+            }
+        }
+    }
+}
+
 // MARK: - Audio Input Device
 struct AudioInputDevice: Identifiable, Hashable {
     let id: AudioDeviceID
@@ -2005,13 +2375,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func initializeApp() {
+        setupStatusBar()
+        registerSettingsHotkey()
+
+        // Check license before full initialization
+        if LicenseManager.shared.isLicensed {
+            log("[Speechy] License found, initializing full app")
+            initializeFullApp()
+            // Re-verify license in background (every 24h)
+            LicenseManager.shared.verifyInBackground()
+        } else {
+            log("[Speechy] No valid license, showing license screen")
+            showLicenseScreen()
+        }
+    }
+
+    func initializeFullApp() {
+        guard overlayWindow == nil else { return } // Prevent double init
+
         overlayWindow = OverlayWindow()
         audioRecorder = AudioRecorder()
         whisperTranscriber = WhisperTranscriber()
         hotkeyManager = HotkeyManager()
 
-        setupStatusBar()
-        registerSettingsHotkey()
         setupHotkeyManager()
         requestPermissions()
 
@@ -2028,7 +2414,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Auto-download base model if no models exist
         checkAndDownloadModel()
 
-        log("[Speechy] App initialized")
+        log("[Speechy] App fully initialized")
+    }
+
+    func showLicenseScreen() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 440, height: 480),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        let view = LicenseView { [weak self] in
+            log("[Speechy] License activated, transitioning to full app")
+            window.close()
+            self?.initializeFullApp()
+        }
+        window.contentView = NSHostingView(rootView: view)
+        window.title = "Speechy — Activate License"
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        mainWindow = window
     }
 
     func checkAndDownloadModel() {
