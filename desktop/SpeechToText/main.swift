@@ -1367,7 +1367,7 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
                 .padding(.bottom, 16)
             }
-            .frame(width: 140, alignment: .leading)
+            .frame(width: 168, alignment: .leading)
             .fixedSize(horizontal: true, vertical: false)
             .background(Color(NSColor.windowBackgroundColor).opacity(0.5))
 
@@ -1389,7 +1389,7 @@ struct SettingsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 560, height: 680)
+        .frame(width: 672, height: 816)
     }
 }
 
@@ -2561,7 +2561,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.quit()
             }
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 560, height: 680),
+                contentRect: NSRect(x: 0, y: 0, width: 672, height: 816),
                 styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false
