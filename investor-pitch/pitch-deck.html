@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>Speechy — Investor Pitch Deck</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  :root {
+    --blue: #007AFF;
+    --purple: #AF52DE;
+    --dark: #0D1117;
+    --card-bg: rgba(255,255,255,0.06);
+    --card-border: rgba(255,255,255,0.08);
+    --text: #E6EDF3;
+    --text-muted: #8B949E;
+    --green: #3FB950;
+    --orange: #F0883E;
+    --red: #F85149;
+    --cyan: #58A6FF;
+  }
+
+  @page { size: 297mm 210mm; margin: 0; }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--dark);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    margin: 0;
+    padding: 0;
+  }
+
+  .page {
+    width: 297mm;
+    height: 210mm;
+    page-break-after: always;
+    page-break-inside: avoid;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: var(--dark);
+  }
+  .page:last-child { page-break-after: avoid; }
+
+  /* ===== COVER ===== */
+  .cover {
+    background: linear-gradient(135deg, #080B10 0%, #0D1522 30%, #111D33 50%, #0D1522 70%, #080B10 100%);
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+  .cover::before {
+    content: '';
+    position: absolute;
+    inset: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(ellipse at 40% 50%, rgba(0,122,255,0.12) 0%, transparent 50%),
+                radial-gradient(ellipse at 60% 50%, rgba(175,82,222,0.10) 0%, transparent 50%);
+  }
+  .cover-content { position: relative; z-index: 1; }
+  .logo-box {
+    width: 90px; height: 90px; margin: 0 auto 24px;
+    background: linear-gradient(135deg, var(--blue), var(--purple));
+    border-radius: 22px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 20px 60px rgba(0,122,255,0.3), 0 0 100px rgba(175,82,222,0.15);
+  }
+  .cover h1 {
+    font-size: 48pt; font-weight: 900;
+    background: linear-gradient(135deg, #fff, #c8d6e5);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    letter-spacing: -1px; margin-bottom: 8px;
+  }
+  .cover .tagline {
+    font-size: 14pt; font-weight: 300; color: var(--text-muted);
+    letter-spacing: 3px; text-transform: uppercase; margin-bottom: 20px;
+  }
+  .cover .desc {
+    font-size: 10pt; color: var(--text-muted); margin-bottom: 36px;
+    max-width: 480px; margin-left: auto; margin-right: auto; line-height: 1.7;
+  }
+  .cover-stats { display: flex; gap: 56px; justify-content: center; }
+  .cover-stat .num {
+    font-size: 26pt; font-weight: 800;
+    background: linear-gradient(135deg, var(--blue), var(--purple));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .cover-stat .lbl {
+    font-size: 7pt; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 2px; margin-top: 3px;
+  }
+  .cover-footer {
+    position: absolute; bottom: 20px; left: 0; right: 0;
+    text-align: center; font-size: 7.5pt; color: var(--text-muted); letter-spacing: 1px;
+  }
+
+  /* ===== CONTENT PAGES ===== */
+  .cp { padding: 28px 40px; }
+  .ph {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px; padding-bottom: 12px;
+    border-bottom: 1px solid var(--card-border);
+  }
+  .ph h2 {
+    font-size: 20pt; font-weight: 800;
+    background: linear-gradient(135deg, var(--blue), var(--purple));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .pn { font-size: 8pt; color: var(--text-muted); font-weight: 600; letter-spacing: 2px; }
+
+  .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .g4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 14px; }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .card h3 { font-size: 10pt; font-weight: 700; margin-bottom: 6px; color: #fff; }
+  .card p, .card li { font-size: 8pt; color: var(--text-muted); line-height: 1.5; }
+  .card ul { list-style: none; padding: 0; }
+  .card ul li { padding: 2px 0 2px 14px; position: relative; }
+  .card ul li::before { content: '•'; position: absolute; left: 0; color: var(--blue); font-weight: bold; }
+
+  .ci {
+    width: 36px; height: 36px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16pt; margin-bottom: 10px;
+  }
+
+  .prob { background: linear-gradient(135deg, rgba(248,81,73,0.08), rgba(248,81,73,0.02)); border-color: rgba(248,81,73,0.15); }
+  .prob .ci { background: rgba(248,81,73,0.15); }
+  .sol { background: linear-gradient(135deg, rgba(63,185,80,0.08), rgba(63,185,80,0.02)); border-color: rgba(63,185,80,0.15); }
+  .sol .ci { background: rgba(63,185,80,0.15); }
+
+  /* Flow */
+  .flow { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 14px; }
+  .fs {
+    background: var(--card-bg); border: 1px solid var(--card-border);
+    border-radius: 8px; padding: 8px 12px; text-align: center;
+    font-size: 7pt; color: var(--text-muted); min-width: 80px;
+  }
+  .fs .si { font-size: 16pt; display: block; margin-bottom: 2px; }
+  .fs .sl { font-weight: 600; color: #fff; font-size: 7pt; }
+  .fa { color: var(--blue); font-size: 12pt; font-weight: bold; }
+
+  /* Charts */
+  .bars { display: flex; align-items: flex-end; gap: 8px; height: 100px; }
+  .bg { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; }
+  .bar { width: 100%; max-width: 36px; border-radius: 5px 5px 0 0; min-height: 6px; }
+  .bv { font-size: 6.5pt; font-weight: 700; color: #fff; text-align: center; margin-bottom: 3px; }
+  .bl { font-size: 6.5pt; color: var(--text-muted); margin-top: 4px; text-align: center; }
+  .bb { background: linear-gradient(180deg, var(--blue), rgba(0,122,255,0.6)); }
+  .bp { background: linear-gradient(180deg, var(--purple), rgba(175,82,222,0.6)); }
+  .bgr { background: linear-gradient(180deg, var(--green), rgba(63,185,80,0.6)); }
+
+  .sg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .sb {
+    background: rgba(255,255,255,0.03); border: 1px solid var(--card-border);
+    border-radius: 8px; padding: 10px; text-align: center;
+  }
+  .sb .v {
+    font-size: 16pt; font-weight: 800;
+    background: linear-gradient(135deg, var(--blue), var(--purple));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .sb .l { font-size: 6.5pt; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 1px; }
+
+  /* Competition table */
+  .ct { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 8pt; }
+  .ct th {
+    background: rgba(255,255,255,0.05); padding: 8px 10px; text-align: left;
+    font-weight: 600; color: var(--text-muted); text-transform: uppercase;
+    font-size: 6.5pt; letter-spacing: 1px; border-bottom: 1px solid var(--card-border);
+  }
+  .ct th:first-child { border-radius: 6px 0 0 0; }
+  .ct th:last-child { border-radius: 0 6px 0 0; }
+  .ct td { padding: 7px 10px; border-bottom: 1px solid var(--card-border); color: var(--text-muted); }
+  .ct tr:last-child td { border-bottom: none; }
+  .ct .hl { background: linear-gradient(90deg, rgba(0,122,255,0.08), rgba(175,82,222,0.08)); }
+  .ct .hl td { color: #fff; font-weight: 600; }
+  .chk { color: var(--green); font-weight: bold; }
+  .crs { color: var(--red); font-weight: bold; }
+
+  /* Pricing */
+  .pc { text-align: center; padding: 14px 12px; position: relative; }
+  .pc.feat {
+    background: linear-gradient(135deg, rgba(0,122,255,0.12), rgba(175,82,222,0.12));
+    border-color: rgba(0,122,255,0.3);
+  }
+  .pc .tier { font-size: 7pt; text-transform: uppercase; letter-spacing: 2px; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; }
+  .pc .price { font-size: 20pt; font-weight: 800; color: #fff; margin-bottom: 2px; }
+  .pc .price span { font-size: 9pt; font-weight: 400; color: var(--text-muted); }
+  .pc .features { text-align: left; margin-top: 10px; }
+  .pc .features li { font-size: 7.5pt; padding: 2px 0; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 20px;
+    font-size: 6pt; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+    position: absolute; top: -8px; left: 50%; transform: translateX(-50%);
+    background: linear-gradient(135deg, var(--blue), var(--purple)); color: #fff;
+  }
+
+  /* Donut */
+  .donut-wrap { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
+  .donut { width: 90px; height: 90px; flex-shrink: 0; }
+  .leg { font-size: 7.5pt; }
+  .li { display: flex; align-items: center; gap: 6px; padding: 2px 0; color: var(--text-muted); }
+  .ld { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Horizontal bars */
+  .hb { margin-top: 8px; }
+  .hr { display: flex; align-items: center; margin-bottom: 6px; gap: 8px; }
+  .hl2 { width: 90px; font-size: 7.5pt; color: var(--text-muted); text-align: right; flex-shrink: 0; }
+  .ht { flex: 1; height: 16px; background: rgba(255,255,255,0.04); border-radius: 4px; overflow: hidden; }
+  .hf { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; }
+  .hv { font-size: 6.5pt; font-weight: 700; color: #fff; }
+
+  /* Roadmap */
+  .tl-card {
+    background: var(--card-bg); border: 1px solid var(--card-border);
+    border-radius: 8px; padding: 10px 14px; margin-bottom: 8px;
+  }
+  .tl-card h4 { font-size: 8.5pt; font-weight: 700; color: #fff; margin-bottom: 2px; }
+  .tl-card .td { font-size: 7pt; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  .tl-card li { font-size: 7pt; color: var(--text-muted); line-height: 1.4; padding: 1px 0 1px 10px; position: relative; }
+  .tl-card li::before { content: '→'; position: absolute; left: 0; font-size: 6pt; }
+  .tl-card ul { list-style: none; padding: 0; }
+
+  /* Customer segments */
+  .seg { margin-bottom: 7px; padding: 10px 14px; }
+  .seg-head { display: flex; gap: 10px; align-items: flex-start; }
+  .seg-icon { font-size: 18pt; line-height: 1; }
+  .seg h3 { font-size: 9pt; margin-bottom: 2px; }
+  .seg p { font-size: 7pt; color: var(--text-muted); line-height: 1.4; }
+  .seg-tags { margin-top: 4px; display: flex; gap: 4px; }
+  .tag { padding: 1px 6px; border-radius: 3px; font-size: 6pt; }
+  .tag-blue { background: rgba(0,122,255,0.1); color: var(--cyan); }
+  .tag-green { background: rgba(63,185,80,0.1); color: var(--green); }
+  .tag-orange { background: rgba(240,136,62,0.1); color: var(--orange); }
+
+  /* CTA */
+  .cta {
+    background: linear-gradient(135deg, #080B10 0%, #0D1522 30%, #111D33 50%, #0D1522 70%, #080B10 100%);
+    justify-content: center; align-items: center; text-align: center;
+  }
+  .cta::before {
+    content: ''; position: absolute; inset: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(ellipse at 50% 50%, rgba(0,122,255,0.08) 0%, transparent 60%),
+                radial-gradient(ellipse at 50% 60%, rgba(175,82,222,0.06) 0%, transparent 50%);
+  }
+  .cta-in { position: relative; z-index: 1; max-width: 680px; }
+  .cta-in h2 {
+    font-size: 28pt; font-weight: 800;
+    background: linear-gradient(135deg, #fff, #c8d6e5);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 10px;
+  }
+  .cta-in .sub { font-size: 10pt; color: var(--text-muted); margin-bottom: 28px; line-height: 1.7; }
+  .cta-boxes { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 28px; }
+  .cb {
+    background: var(--card-bg); border: 1px solid var(--card-border);
+    border-radius: 12px; padding: 18px 14px;
+  }
+  .cb .v {
+    font-size: 20pt; font-weight: 800;
+    background: linear-gradient(135deg, var(--blue), var(--purple));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 4px;
+  }
+  .cb .l { font-size: 7.5pt; color: var(--text-muted); line-height: 1.4; }
+</style>
+</head>
+<body>
+
+<!-- ===== PAGE 1: COVER ===== -->
+<div class="page cover">
+  <div class="cover-content">
+    <div class="logo-box">
+      <svg width="44" height="44" viewBox="0 0 50 50" fill="none">
+        <rect x="17" y="6" width="16" height="24" rx="8" fill="white" opacity="0.95"/>
+        <path d="M12 24v2c0 7.18 5.82 13 13 13s13-5.82 13-13v-2" stroke="white" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+        <line x1="25" y1="39" x2="25" y2="45" stroke="white" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+        <line x1="19" y1="45" x2="31" y2="45" stroke="white" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+      </svg>
+    </div>
+    <h1>Speechy</h1>
+    <div class="tagline">Privacy-First Voice Intelligence</div>
+    <div class="desc">
+      Bulut bağımlılığını ortadan kaldıran, tamamen yerel AI ile çalışan<br>masaüstü ses-yazı dönüştürme platformu
+    </div>
+    <div class="cover-stats">
+      <div class="cover-stat"><div class="num">29</div><div class="lbl">Dil Desteği</div></div>
+      <div class="cover-stat"><div class="num">%100</div><div class="lbl">Yerel İşleme</div></div>
+      <div class="cover-stat"><div class="num">~3s</div><div class="lbl">Dönüştürme Süresi</div></div>
+      <div class="cover-stat"><div class="num">$0</div><div class="lbl">Bulut Maliyeti</div></div>
+    </div>
+  </div>
+  <div class="cover-footer">YATIRIMCI SUNUMU — MART 2026 &nbsp;&nbsp;|&nbsp;&nbsp; GİZLİ</div>
+</div>
+
+<!-- ===== PAGE 2: PROBLEM & SOLUTION ===== -->
+<div class="page cp">
+  <div class="ph"><h2>Problem & Çözüm</h2><span class="pn">02 / 06</span></div>
+
+  <div class="g2" style="flex:1;">
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <div style="font-size:11pt; font-weight:700; color:var(--red); margin-bottom:2px;">⚠ Problem</div>
+      <div class="card prob">
+        <div class="ci">🔓</div>
+        <h3>Veri Gizliliği Krizi</h3>
+        <p>Mevcut ses-yazı çözümleri tüm ses verilerini buluta gönderiyor. Sağlık sektöründe tek bir veri ihlali ortalama <strong style="color:#F85149">$10.93M</strong> maliyete yol açıyor. GDPR, HIPAA ve KVKK uyumluluğu giderek zorlaşıyor.</p>
+      </div>
+      <div class="card prob">
+        <div class="ci">💸</div>
+        <h3>Yüksek ve Tahmin Edilemez Maliyetler</h3>
+        <p>Dragon NaturallySpeaking: <strong style="color:#F85149">$699</strong> tek seferlik veya <strong style="color:#F85149">$55/ay</strong>. Bulut tabanlı çözümler ölçeklendikçe API maliyetleri katlanarak artıyor. KOBİ'ler için erişilemez.</p>
+      </div>
+      <div class="card prob">
+        <div class="ci">🌐</div>
+        <h3>İnternet Bağımlılığı</h3>
+        <p>Bulut tabanlı çözümler çevrimdışı çalışamıyor. Saha çalışanları, uzak bölgelerdeki doktorlar ve güvenlik personeli hizmet dışı kalıyor.</p>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <div style="font-size:11pt; font-weight:700; color:var(--green); margin-bottom:2px;">✦ Çözüm: Speechy</div>
+      <div class="card sol">
+        <div class="ci">🛡️</div>
+        <h3>%100 Yerel AI İşleme</h3>
+        <p>Tüm ses verisi kullanıcının kendi bilgisayarında işlenir. Hiçbir ses dosyası sunucuya gönderilmez. OpenAI Whisper modelleri yerel olarak çalışır. GDPR/HIPAA/KVKK uyumlu by-design.</p>
+      </div>
+      <div class="card sol">
+        <div class="ci">⚡</div>
+        <h3>Anında Kopyala-Yapıştır İş Akışı</h3>
+        <p>Kısayol tuşuna basılı tut → konuş → bırak → metin otomatik olarak aktif pencereye yapıştırılır. <strong style="color:#3FB950">3 saniyede</strong> tamamlanır. Ekstra pencere veya fare ihtiyacı yok.</p>
+      </div>
+      <div class="card sol">
+        <div class="ci">🎯</div>
+        <h3>Profesyonel Esneklik</h3>
+        <p>4 bağımsız kısayol slotu, her biri farklı dil ve mod ile yapılandırılabilir. Push-to-talk ve Toggle-to-talk. 29 dil, 4 AI model seçeneği (hız ↔ doğruluk).</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow">
+    <div class="fs"><span class="si">⌨️</span><span class="sl">Kısayol Tuşu</span><div>Basılı tut / aç-kapa</div></div>
+    <span class="fa">→</span>
+    <div class="fs"><span class="si">🎙️</span><span class="sl">Ses Kaydı</span><div>Canlı dalga formu</div></div>
+    <span class="fa">→</span>
+    <div class="fs"><span class="si">🧠</span><span class="sl">Yerel AI</span><div>Whisper modeli</div></div>
+    <span class="fa">→</span>
+    <div class="fs"><span class="si">📋</span><span class="sl">Oto Yapıştır</span><div>Aktif pencereye</div></div>
+    <span class="fa">→</span>
+    <div class="fs"><span class="si">📝</span><span class="sl">Geçmiş</span><div>Aranabilir kayıt</div></div>
+  </div>
+</div>
+
+<!-- ===== PAGE 3: MARKET & COMPETITION ===== -->
+<div class="page cp">
+  <div class="ph"><h2>Pazar & Rekabet Analizi</h2><span class="pn">03 / 06</span></div>
+
+  <div class="g2" style="margin-bottom:16px;">
+    <div class="card" style="padding:18px;">
+      <h3>Küresel Ses-Yazı Pazar Büyüklüğü</h3>
+      <div style="font-size:7pt; color:var(--text-muted); margin-bottom:8px;">Milyar USD — Yıllara Göre Projeksiyon</div>
+      <div class="bars">
+        <div class="bg"><div class="bv">$3.8B</div><div class="bar bb" style="height:28%;"></div><div class="bl">2024</div></div>
+        <div class="bg"><div class="bv">$4.5B</div><div class="bar bb" style="height:34%;"></div><div class="bl">2025</div></div>
+        <div class="bg"><div class="bv">$5.2B</div><div class="bar bb" style="height:40%;"></div><div class="bl">2026</div></div>
+        <div class="bg"><div class="bv">$6.1B</div><div class="bar bb" style="height:48%;"></div><div class="bl">2027</div></div>
+        <div class="bg"><div class="bv">$7.2B</div><div class="bar bp" style="height:58%;"></div><div class="bl">2028</div></div>
+        <div class="bg"><div class="bv">$8.6B</div><div class="bar bp" style="height:70%;"></div><div class="bl">2029</div></div>
+        <div class="bg"><div class="bv">$10.2B</div><div class="bar bgr" style="height:85%;"></div><div class="bl">2030</div></div>
+      </div>
+      <div class="sg">
+        <div class="sb"><div class="v" style="font-size:14pt;">14.4%</div><div class="l">STT API CAGR</div></div>
+        <div class="sb"><div class="v" style="font-size:14pt;">27.8%</div><div class="l">On-Device AI CAGR</div></div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:18px;">
+      <h3>On-Device AI Pazar Büyümesi</h3>
+      <div style="font-size:7pt; color:var(--text-muted); margin-bottom:8px;">Speechy'nin hedef segmenti — Milyar USD</div>
+      <div class="bars">
+        <div class="bg"><div class="bv">$10.8B</div><div class="bar bp" style="height:14%;"></div><div class="bl">2025</div></div>
+        <div class="bg"><div class="bv">$17.5B</div><div class="bar bp" style="height:23%;"></div><div class="bl">2027</div></div>
+        <div class="bg"><div class="bv">$28.3B</div><div class="bar bp" style="height:38%;"></div><div class="bl">2029</div></div>
+        <div class="bg"><div class="bv">$45.8B</div><div class="bar bgr" style="height:61%;"></div><div class="bl">2031</div></div>
+        <div class="bg"><div class="bv">$75.5B</div><div class="bar bgr" style="height:100%;"></div><div class="bl">2033</div></div>
+      </div>
+      <div style="margin-top:12px; padding:10px 14px; background:rgba(63,185,80,0.08); border:1px solid rgba(63,185,80,0.15); border-radius:8px;">
+        <div style="font-size:8pt; color:var(--green); font-weight:700; margin-bottom:2px;">Neden On-Device?</div>
+        <div style="font-size:7pt; color:var(--text-muted); line-height:1.5;">Edge AI dağıtımlarında on-device segmenti <strong style="color:#fff;">%59.47</strong> pazar payına sahip (2025). Düzenleyici baskılar (GDPR, HIPAA, KVKK) bu oranı hızla artırıyor.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="padding:14px 18px;">
+    <h3 style="margin-bottom:6px;">Rekabet Karşılaştırması</h3>
+    <table class="ct">
+      <thead><tr>
+        <th>Ürün</th><th>Fiyat</th><th>Yerel İşleme</th><th>Çevrimdışı</th><th>Çoklu Dil</th><th>Gizlilik</th><th>Kısayol Slotları</th><th>Platform</th>
+      </tr></thead>
+      <tbody>
+        <tr class="hl"><td><strong>Speechy</strong></td><td>$9.99/ay</td><td class="chk">✓ %100</td><td class="chk">✓</td><td class="chk">29 dil</td><td class="chk">Tam</td><td class="chk">4 slot</td><td>macOS, Win</td></tr>
+        <tr><td>Dragon</td><td>$699 / $55/ay</td><td class="chk">✓ Kısmen</td><td class="chk">✓</td><td class="crs">Sınırlı</td><td style="color:var(--orange)">Orta</td><td class="crs">1</td><td>Windows</td></tr>
+        <tr><td>Wispr Flow</td><td>$12/ay</td><td class="crs">✗ Bulut</td><td class="crs">✗</td><td class="chk">Çoklu</td><td class="crs">Düşük</td><td class="crs">1</td><td>macOS</td></tr>
+        <tr><td>Otter.ai</td><td>$16.99/ay</td><td class="crs">✗ Bulut</td><td class="crs">✗</td><td class="crs">Sadece EN</td><td class="crs">Düşük</td><td class="crs">—</td><td>Web, Mobil</td></tr>
+        <tr><td>macOS Dikte</td><td>Ücretsiz</td><td class="chk">✓ Kısmen</td><td style="color:var(--orange)">Kısmen</td><td style="color:var(--orange)">Sınırlı</td><td style="color:var(--orange)">Orta</td><td class="crs">1</td><td>macOS</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ===== PAGE 4: BUSINESS MODEL ===== -->
+<div class="page cp">
+  <div class="ph"><h2>İş Modeli & Gelir Projeksiyonu</h2><span class="pn">04 / 06</span></div>
+
+  <div style="margin-bottom:16px;">
+    <div style="font-size:9pt; font-weight:700; color:#fff; margin-bottom:10px;">Fiyatlandırma Stratejisi</div>
+    <div class="g4">
+      <div class="card pc">
+        <div class="tier">Free</div>
+        <div class="price">$0</div>
+        <div style="font-size:7pt; color:var(--text-muted);">Sonsuza dek</div>
+        <div class="features"><ul>
+          <li>Günlük 15 dk transkripsiyon</li><li>Base AI modeli</li><li>1 kısayol slotu</li><li>5 dil desteği</li>
+        </ul></div>
+      </div>
+      <div class="card pc feat" style="position:relative;">
+        <div class="badge">En Popüler</div>
+        <div class="tier">Pro</div>
+        <div class="price">$9.99<span>/ay</span></div>
+        <div style="font-size:7pt; color:var(--text-muted);">veya $99/yıl</div>
+        <div class="features"><ul>
+          <li>Sınırsız transkripsiyon</li><li>Tüm AI modelleri</li><li>4 kısayol slotu</li><li>29 dil desteği</li><li>Öncelikli destek</li>
+        </ul></div>
+      </div>
+      <div class="card pc">
+        <div class="tier">Lifetime</div>
+        <div class="price">$149</div>
+        <div style="font-size:7pt; color:var(--text-muted);">Tek seferlik</div>
+        <div class="features"><ul>
+          <li>Pro'daki her şey</li><li>Ömür boyu güncelleme</li><li>Erken erişim özellikleri</li><li>1 yıl premium destek</li>
+        </ul></div>
+      </div>
+      <div class="card pc">
+        <div class="tier">Business</div>
+        <div class="price">$19.99<span>/koltuk</span></div>
+        <div style="font-size:7pt; color:var(--text-muted);">aylık, min 5 koltuk</div>
+        <div class="features"><ul>
+          <li>Merkezi lisans yönetimi</li><li>Özel model desteği</li><li>SSO entegrasyonu</li><li>SLA garantisi</li><li>Özel API erişimi</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="g2">
+    <div class="card" style="padding:16px;">
+      <h3>3 Yıllık Gelir Projeksiyonu (MRR)</h3>
+      <div style="font-size:7pt; color:var(--text-muted); margin-bottom:6px;">Aylık Tekrarlayan Gelir — Bin USD</div>
+      <div class="bars" style="height:90px;">
+        <div class="bg"><div class="bv">$2K</div><div class="bar bb" style="height:3%;"></div><div class="bl">Q3'26</div></div>
+        <div class="bg"><div class="bv">$8K</div><div class="bar bb" style="height:7%;"></div><div class="bl">Q4'26</div></div>
+        <div class="bg"><div class="bv">$22K</div><div class="bar bb" style="height:13%;"></div><div class="bl">Q1'27</div></div>
+        <div class="bg"><div class="bv">$45K</div><div class="bar bb" style="height:20%;"></div><div class="bl">Q2'27</div></div>
+        <div class="bg"><div class="bv">$78K</div><div class="bar bp" style="height:30%;"></div><div class="bl">Q3'27</div></div>
+        <div class="bg"><div class="bv">$120K</div><div class="bar bp" style="height:42%;"></div><div class="bl">Q4'27</div></div>
+        <div class="bg"><div class="bv">$185K</div><div class="bar bp" style="height:58%;"></div><div class="bl">Q1'28</div></div>
+        <div class="bg"><div class="bv">$280K</div><div class="bar bgr" style="height:76%;"></div><div class="bl">Q2'28</div></div>
+        <div class="bg"><div class="bv">$420K</div><div class="bar bgr" style="height:100%;"></div><div class="bl">Q4'28</div></div>
+      </div>
+      <div class="sg" style="margin-top:8px;">
+        <div class="sb"><div class="v" style="font-size:13pt;">$5M</div><div class="l">Yıl 3 ARR Hedefi</div></div>
+        <div class="sb"><div class="v" style="font-size:13pt;">50K+</div><div class="l">Yıl 3 Kullanıcı Hedefi</div></div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:12px;">
+      <div class="card" style="padding:14px;">
+        <h3 style="margin-bottom:8px;">Gelir Dağılımı (Yıl 3)</h3>
+        <div class="donut-wrap">
+          <svg class="donut" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="45" fill="none" stroke="#007AFF" stroke-width="18" stroke-dasharray="113.1 169.65" stroke-dashoffset="0" transform="rotate(-90 60 60)"/>
+            <circle cx="60" cy="60" r="45" fill="none" stroke="#AF52DE" stroke-width="18" stroke-dasharray="70.69 212.06" stroke-dashoffset="-113.1" transform="rotate(-90 60 60)"/>
+            <circle cx="60" cy="60" r="45" fill="none" stroke="#3FB950" stroke-width="18" stroke-dasharray="42.41 240.34" stroke-dashoffset="-183.79" transform="rotate(-90 60 60)"/>
+            <circle cx="60" cy="60" r="45" fill="none" stroke="#F0883E" stroke-width="18" stroke-dasharray="56.55 226.19" stroke-dashoffset="-226.19" transform="rotate(-90 60 60)"/>
+          </svg>
+          <div class="leg">
+            <div class="li"><div class="ld" style="background:#007AFF;"></div>Pro Aylık — %40</div>
+            <div class="li"><div class="ld" style="background:#AF52DE;"></div>Pro Yıllık — %25</div>
+            <div class="li"><div class="ld" style="background:#3FB950;"></div>Lifetime — %15</div>
+            <div class="li"><div class="ld" style="background:#F0883E;"></div>Business — %20</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="padding:14px;">
+        <h3 style="margin-bottom:8px;">Birim Ekonomisi</h3>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+          <div style="background:rgba(0,122,255,0.08); border-radius:6px; padding:8px; text-align:center;">
+            <div style="font-size:13pt; font-weight:800; color:var(--cyan);">$0</div>
+            <div style="font-size:6pt; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px;">Marjinal Maliyet / Kullanıcı</div>
+          </div>
+          <div style="background:rgba(63,185,80,0.08); border-radius:6px; padding:8px; text-align:center;">
+            <div style="font-size:13pt; font-weight:800; color:var(--green);">%92</div>
+            <div style="font-size:6pt; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px;">Brüt Kâr Marjı</div>
+          </div>
+          <div style="background:rgba(175,82,222,0.08); border-radius:6px; padding:8px; text-align:center;">
+            <div style="font-size:13pt; font-weight:800; color:var(--purple);">$108</div>
+            <div style="font-size:6pt; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px;">Ortalama LTV</div>
+          </div>
+          <div style="background:rgba(240,136,62,0.08); border-radius:6px; padding:8px; text-align:center;">
+            <div style="font-size:13pt; font-weight:800; color:var(--orange);">$18</div>
+            <div style="font-size:6pt; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px;">Hedef CAC</div>
+          </div>
+        </div>
+        <div style="margin-top:8px; padding:6px 10px; background:rgba(63,185,80,0.06); border-radius:6px; text-align:center;">
+          <span style="font-size:7.5pt; color:var(--green); font-weight:600;">LTV:CAC = 6:1</span>
+          <span style="font-size:6.5pt; color:var(--text-muted);"> — Yerel işleme sayesinde sunucu maliyeti sıfır</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE 5: ROADMAP & CUSTOMERS ===== -->
+<div class="page cp">
+  <div class="ph"><h2>Yol Haritası & Hedef Müşteriler</h2><span class="pn">05 / 06</span></div>
+
+  <div class="g2" style="flex:1;">
+    <div>
+      <div style="font-size:9pt; font-weight:700; color:#fff; margin-bottom:10px;">Ürün Yol Haritası</div>
+
+      <div style="display:flex; gap:10px; margin-bottom:6px;">
+        <div style="width:3px; border-radius:2px; background:var(--blue); flex-shrink:0;"></div>
+        <div class="tl-card" style="flex:1;">
+          <div class="td" style="color:var(--blue);">Faz 1 — Q2-Q3 2026</div>
+          <h4>Temel Ürün Geliştirme</h4>
+          <ul>
+            <li>macOS masaüstü uygulaması v1.0 yayını</li>
+            <li>Windows masaüstü uygulaması geliştirme</li>
+            <li>Lisanslama ve ödeme altyapısı kurulumu</li>
+            <li>Beta test programı (500 kullanıcı)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-bottom:6px;">
+        <div style="width:3px; border-radius:2px; background:var(--purple); flex-shrink:0;"></div>
+        <div class="tl-card" style="flex:1;">
+          <div class="td" style="color:var(--purple);">Faz 2 — Q4 2026 - Q1 2027</div>
+          <h4>Pazar Lansmanı</h4>
+          <ul>
+            <li>macOS + Windows eşzamanlı lansman</li>
+            <li>Freemium model ile kullanıcı edinimi</li>
+            <li>Product Hunt ve Hacker News lansmanı</li>
+            <li>İlk 5,000 kullanıcı hedefi</li>
+          </ul>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-bottom:6px;">
+        <div style="width:3px; border-radius:2px; background:var(--green); flex-shrink:0;"></div>
+        <div class="tl-card" style="flex:1;">
+          <div class="td" style="color:var(--green);">Faz 3 — Q2-Q4 2027</div>
+          <h4>Büyüme & Kurumsal</h4>
+          <ul>
+            <li>Business tier lansmanı (kurumsal özellikler)</li>
+            <li>Özel fine-tuned modeller (tıbbi, hukuki)</li>
+            <li>API/SDK — üçüncü parti entegrasyon</li>
+            <li>LLM entegrasyonu: düzeltme, özetleme</li>
+          </ul>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px;">
+        <div style="width:3px; border-radius:2px; background:var(--orange); flex-shrink:0;"></div>
+        <div class="tl-card" style="flex:1;">
+          <div class="td" style="color:var(--orange);">Faz 4 — 2028</div>
+          <h4>Ölçekleme & Genişleme</h4>
+          <ul>
+            <li>Linux desteği</li>
+            <li>Gerçek zamanlı çeviri modu</li>
+            <li>Sektöre özel çözümler (sağlık, hukuk, medya)</li>
+            <li>50,000+ kullanıcı, $5M ARR hedefi</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:9pt; font-weight:700; color:#fff; margin-bottom:10px;">Hedef Müşteri Segmentleri</div>
+
+      <div class="card seg">
+        <div class="seg-head">
+          <div class="seg-icon">🏥</div>
+          <div>
+            <h3>Sağlık Sektörü</h3>
+            <p>Doktorlar, klinikler, hastaneler. Hasta verileri buluta gönderilemez (HIPAA/KVKK). Raporlama süresini %60 kısaltma potansiyeli.</p>
+            <div class="seg-tags"><span class="tag tag-blue">TAM: $2.4B</span><span class="tag tag-green">Yüksek Öncelik</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card seg">
+        <div class="seg-head">
+          <div class="seg-icon">⚖️</div>
+          <div>
+            <h3>Hukuk Sektörü</h3>
+            <p>Avukatlar, noterler, mahkemeler. Müvekkil gizliliği kritik. Duruşma notları, dilekçe yazımı, sözleşme taslakları.</p>
+            <div class="seg-tags"><span class="tag tag-blue">TAM: $1.8B</span><span class="tag tag-green">Yüksek Öncelik</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card seg">
+        <div class="seg-head">
+          <div class="seg-icon">📰</div>
+          <div>
+            <h3>Medya & İçerik Üreticileri</h3>
+            <p>Gazeteciler, podcasterlar, YouTuberlar. Röportaj deşifresi, altyazı oluşturma, içerik üretim hızlandırma.</p>
+            <div class="seg-tags"><span class="tag tag-blue">TAM: $900M</span><span class="tag tag-orange">Orta Öncelik</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card seg">
+        <div class="seg-head">
+          <div class="seg-icon">🏢</div>
+          <div>
+            <h3>Kurumsal & KOBİ</h3>
+            <p>Toplantı notları, e-posta yazımı, rapor oluşturma. Uzaktan çalışan ekipler. GDPR uyumlu Avrupa pazarı.</p>
+            <div class="seg-tags"><span class="tag tag-blue">TAM: $3.2B</span><span class="tag tag-green">Yüksek Öncelik</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card seg">
+        <div class="seg-head">
+          <div class="seg-icon">🎓</div>
+          <div>
+            <h3>Eğitim & Araştırma</h3>
+            <p>Akademisyenler, öğrenciler, araştırmacılar. Ders notları, tez yazımı, konferans deşifresi.</p>
+            <div class="seg-tags"><span class="tag tag-blue">TAM: $600M</span><span class="tag tag-orange">Orta Öncelik</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE 6: INVESTMENT ASK ===== -->
+<div class="page cta">
+  <div class="cta-in">
+    <div class="logo-box" style="width:64px; height:64px; margin-bottom:18px; border-radius:16px;">
+      <svg width="32" height="32" viewBox="0 0 50 50" fill="none">
+        <rect x="17" y="6" width="16" height="24" rx="8" fill="white" opacity="0.95"/>
+        <path d="M12 24v2c0 7.18 5.82 13 13 13s13-5.82 13-13v-2" stroke="white" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+        <line x1="25" y1="39" x2="25" y2="45" stroke="white" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+        <line x1="19" y1="45" x2="31" y2="45" stroke="white" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+      </svg>
+    </div>
+
+    <h2>Yatırım Talebi</h2>
+    <div class="sub">
+      On-device AI pazarı yılda %27.8 büyüyor. Speechy, gizlilik odaklı ses-yazı dönüştürme alanında<br>
+      benzersiz konumlanmasıyla bu büyümeden pay almaya hazır.
+    </div>
+
+    <div class="cta-boxes">
+      <div class="cb"><div class="v">$500K</div><div class="l">Pre-Seed Yatırım Talebi<br>18 aylık pist</div></div>
+      <div class="cb"><div class="v">$5M</div><div class="l">Yıl 3 ARR Hedefi<br>50K+ kullanıcı</div></div>
+      <div class="cb"><div class="v">6:1</div><div class="l">LTV:CAC Oranı<br>Sıfır sunucu maliyeti</div></div>
+    </div>
+
+    <div style="background:var(--card-bg); border:1px solid var(--card-border); border-radius:12px; padding:20px 24px; text-align:left; max-width:560px; margin:0 auto;">
+      <div style="font-size:9pt; font-weight:700; color:#fff; margin-bottom:10px; text-align:center;">Yatırım Kullanım Alanları</div>
+      <div class="hb">
+        <div class="hr">
+          <div class="hl2">Ürün Geliştirme</div>
+          <div class="ht"><div class="hf bb" style="width:45%;"><span class="hv">%45 — $225K</span></div></div>
+        </div>
+        <div class="hr">
+          <div class="hl2">Pazarlama</div>
+          <div class="ht"><div class="hf bp" style="width:25%;"><span class="hv">%25 — $125K</span></div></div>
+        </div>
+        <div class="hr">
+          <div class="hl2">Ekip Genişleme</div>
+          <div class="ht"><div class="hf" style="width:20%; background:linear-gradient(90deg,var(--green),rgba(63,185,80,0.6));"><span class="hv">%20 — $100K</span></div></div>
+        </div>
+        <div class="hr">
+          <div class="hl2">Operasyon</div>
+          <div class="ht"><div class="hf" style="width:10%; background:linear-gradient(90deg,var(--orange),rgba(240,136,62,0.6));"><span class="hv">%10</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:22px; font-size:8pt; color:var(--text-muted);">
+      <div style="font-size:9pt; font-weight:600; color:#fff; margin-bottom:4px;">İletişim</div>
+      <div>speechy.app &nbsp;|&nbsp; hello@speechy.app</div>
+      <div style="margin-top:12px; font-size:6.5pt; letter-spacing:1px; text-transform:uppercase;">Bu sunum gizli bilgi içerir. İzinsiz dağıtılmamalıdır.</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
