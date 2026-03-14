@@ -484,6 +484,229 @@ struct LicenseView: View {
     }
 }
 
+// MARK: - Permission Checker
+func checkPermissions() -> (accessibility: Bool, microphone: Bool) {
+    let accessibility = AXIsProcessTrusted()
+    let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+    let microphone = (micStatus == .authorized)
+    return (accessibility: accessibility, microphone: microphone)
+}
+
+// MARK: - Permission Check View
+struct PermissionCheckView: View {
+    @State private var accessibilityGranted: Bool
+    @State private var microphoneGranted: Bool
+    var onAllGranted: () -> Void
+
+    init(accessibility: Bool, microphone: Bool, onAllGranted: @escaping () -> Void) {
+        _accessibilityGranted = State(initialValue: accessibility)
+        _microphoneGranted = State(initialValue: microphone)
+        self.onAllGranted = onAllGranted
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer().frame(height: 32)
+
+            // Header icon
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: [Color.orange, Color.red]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 70, height: 70)
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 30, weight: .medium))
+                    .foregroundColor(.white)
+            }
+            .padding(.bottom, 16)
+
+            Text("Permissions Required")
+                .font(.system(size: 24, weight: .bold))
+                .padding(.bottom, 6)
+
+            Text("Speechy needs the following permissions to work properly.")
+                .font(.system(size: 13))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+                .padding(.bottom, 28)
+
+            // Permission rows
+            VStack(spacing: 12) {
+                // Accessibility
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(accessibilityGranted ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
+                            .frame(width: 40, height: 40)
+                        Image(systemName: accessibilityGranted ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(accessibilityGranted ? .green : .red)
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Accessibility")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("Required to detect global hotkeys for recording.")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .lineLimit(2)
+                    }
+
+                    Spacer()
+
+                    if accessibilityGranted {
+                        Text("Granted")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.green)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.green.opacity(0.1))
+                            .cornerRadius(6)
+                    } else {
+                        Text("Missing")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.red)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.red.opacity(0.1))
+                            .cornerRadius(6)
+                    }
+                }
+                .padding(14)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(12)
+
+                // Microphone
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(microphoneGranted ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
+                            .frame(width: 40, height: 40)
+                        Image(systemName: microphoneGranted ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(microphoneGranted ? .green : .red)
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Microphone")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("Required to record your voice for transcription.")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .lineLimit(2)
+                    }
+
+                    Spacer()
+
+                    if microphoneGranted {
+                        Text("Granted")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.green)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.green.opacity(0.1))
+                            .cornerRadius(6)
+                    } else {
+                        Text("Missing")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.red)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.red.opacity(0.1))
+                            .cornerRadius(6)
+                    }
+                }
+                .padding(14)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(12)
+            }
+            .padding(.horizontal, 28)
+            .padding(.bottom, 24)
+
+            // Buttons
+            VStack(spacing: 10) {
+                if !accessibilityGranted || !microphoneGranted {
+                    Button(action: {
+                        if !accessibilityGranted {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                        } else if !microphoneGranted {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+                        }
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "gear")
+                                .font(.system(size: 13, weight: .medium))
+                            Text("Open System Settings")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .frame(width: 300, height: 40)
+                        .background(
+                            LinearGradient(
+                                gradient: Gradient(colors: [Color.blue, Color.purple]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button(action: {
+                    let perms = checkPermissions()
+                    accessibilityGranted = perms.accessibility
+                    microphoneGranted = perms.microphone
+                    if perms.accessibility && perms.microphone {
+                        onAllGranted()
+                    }
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Check Again")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .frame(width: 300, height: 40)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .foregroundColor(.primary)
+                    .cornerRadius(10)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.primary.opacity(0.15), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+
+                if accessibilityGranted && microphoneGranted {
+                    Button(action: onAllGranted) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 13, weight: .medium))
+                            Text("Continue")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .frame(width: 300, height: 40)
+                        .background(Color.green)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Spacer().frame(height: 24)
+        }
+        .frame(width: 440, height: 520)
+    }
+}
+
 // MARK: - Audio Input Device
 struct AudioInputDevice: Identifiable, Hashable {
     let id: AudioDeviceID
@@ -2523,6 +2746,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusBar()
         registerSettingsHotkey()
 
+        // Always listen for open settings notification (so Cmd+Shift+S works even without license)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleSettingsHotkey), name: NSNotification.Name("OpenSettings"), object: nil)
+
         // Check license before full initialization
         if LicenseManager.shared.isLicensed {
             log("[Speechy] License found, initializing full app")
@@ -2535,6 +2761,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    @objc func handleSettingsHotkey() {
+        // If no license, show license screen instead of settings
+        if !LicenseManager.shared.isLicensed {
+            log("[Speechy] Cmd+Shift+S pressed but no license, showing license screen")
+            showLicenseScreen()
+        } else {
+            openSettings()
+        }
+    }
+
     func initializeFullApp() {
         guard overlayWindow == nil else { return } // Prevent double init
 
@@ -2543,6 +2779,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         whisperTranscriber = WhisperTranscriber()
         hotkeyManager = HotkeyManager()
 
+        // Check permissions on every launch
+        let perms = checkPermissions()
+        log("[Speechy] Permission check - Accessibility: \(perms.accessibility), Microphone: \(perms.microphone)")
+
+        if !perms.accessibility || !perms.microphone {
+            showPermissionCheck(accessibility: perms.accessibility, microphone: perms.microphone)
+            return
+        }
+
+        continueFullAppInit()
+    }
+
+    func continueFullAppInit() {
         setupHotkeyManager()
         requestPermissions()
 
@@ -2560,6 +2809,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         checkAndDownloadModel()
 
         log("[Speechy] App fully initialized")
+    }
+
+    var permissionWindow: NSWindow?
+
+    func showPermissionCheck(accessibility: Bool, microphone: Bool) {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 440, height: 520),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        let view = PermissionCheckView(accessibility: accessibility, microphone: microphone) { [weak self] in
+            log("[Speechy] All permissions granted, continuing initialization")
+            window.close()
+            self?.permissionWindow = nil
+            self?.continueFullAppInit()
+        }
+        window.contentView = NSHostingView(rootView: view)
+        window.title = "Speechy — Permissions"
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        permissionWindow = window
     }
 
     func showLicenseScreen() {
@@ -2674,9 +2947,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 log("[Speechy] Mic permission granted: \(granted)")
             }
         }
-
-        // Listen for open settings notification
-        NotificationCenter.default.addObserver(self, selector: #selector(openSettings), name: NSNotification.Name("OpenSettings"), object: nil)
     }
 
     func showOnboarding() {
@@ -2786,7 +3056,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func quit() {
-        hotkeyManager.stopListening()
+        hotkeyManager?.stopListening()
         NSApp.terminate(nil)
     }
 }
@@ -2990,6 +3260,14 @@ class HotkeyManager {
         DispatchQueue.main.async { [weak self] in
             self?.startPermissionPolling()
 
+            // Show the dedicated permission check window via AppDelegate
+            let perms = checkPermissions()
+            if let appDelegate = NSApp.delegate as? AppDelegate {
+                appDelegate.showPermissionCheck(accessibility: perms.accessibility, microphone: perms.microphone)
+                return
+            }
+
+            // Fallback to basic alert if AppDelegate not available
             let alert = NSAlert()
             alert.messageText = "Accessibility Permission Required"
             alert.informativeText = "Speechy needs Accessibility permission to detect hotkeys. Please enable it in System Settings > Privacy & Security > Accessibility.\n\nThe app will start automatically once permission is granted."
