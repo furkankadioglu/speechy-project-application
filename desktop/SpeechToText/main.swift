@@ -492,6 +492,17 @@ func checkPermissions() -> (accessibility: Bool, microphone: Bool) {
     return (accessibility: accessibility, microphone: microphone)
 }
 
+func requestMicrophonePermission(completion: @escaping (Bool) -> Void) {
+    let status = AVCaptureDevice.authorizationStatus(for: .audio)
+    if status == .notDetermined {
+        AVCaptureDevice.requestAccess(for: .audio) { granted in
+            DispatchQueue.main.async { completion(granted) }
+        }
+    } else {
+        completion(status == .authorized)
+    }
+}
+
 // MARK: - Permission Check View
 struct PermissionCheckView: View {
     @State private var accessibilityGranted: Bool
@@ -660,11 +671,13 @@ struct PermissionCheckView: View {
                 }
 
                 Button(action: {
-                    let perms = checkPermissions()
-                    accessibilityGranted = perms.accessibility
-                    microphoneGranted = perms.microphone
-                    if perms.accessibility && perms.microphone {
-                        onAllGranted()
+                    // If mic is notDetermined, request it first
+                    requestMicrophonePermission { granted in
+                        microphoneGranted = granted
+                        accessibilityGranted = AXIsProcessTrusted()
+                        if accessibilityGranted && microphoneGranted {
+                            onAllGranted()
+                        }
                     }
                 }) {
                     HStack(spacing: 8) {
@@ -704,6 +717,12 @@ struct PermissionCheckView: View {
             Spacer().frame(height: 24)
         }
         .frame(width: 440, height: 520)
+        .onAppear {
+            // Auto-request microphone permission if not yet asked
+            requestMicrophonePermission { granted in
+                microphoneGranted = granted
+            }
+        }
     }
 }
 
