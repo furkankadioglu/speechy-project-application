@@ -1,0 +1,275 @@
+<UserControl x:Class="Speechy.Views.Tabs.LicenseTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                  Background="Transparent">
+        <StackPanel Margin="28">
+
+            <!-- ========== License Header ========== -->
+            <StackPanel Margin="0,0,0,4">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <TextBlock Text="&#xE192;"
+                               FontFamily="Segoe MDL2 Assets"
+                               FontSize="16" FontWeight="SemiBold"
+                               Foreground="#F97316"
+                               VerticalAlignment="Center"
+                               Margin="0,0,8,0" />
+                    <TextBlock Text="License Information"
+                               FontSize="18" FontWeight="Bold"
+                               Foreground="White" />
+                </StackPanel>
+                <TextBlock Text="Manage your Speechy license and subscription."
+                           FontSize="12" Foreground="#A0A0B8" />
+            </StackPanel>
+
+            <!-- ========== License Status Card ========== -->
+            <Border x:Name="StatusCard" CornerRadius="12"
+                    Padding="16" Margin="0,16,0,0"
+                    BorderThickness="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Grid Grid.Column="0" Width="44" Height="44" Margin="0,0,14,0">
+                        <Ellipse x:Name="StatusIconBg" />
+                        <TextBlock x:Name="StatusIcon"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="22"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Grid>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock x:Name="StatusTitle"
+                                   FontSize="15" FontWeight="SemiBold"
+                                   Foreground="White" Margin="0,0,0,2" />
+                        <TextBlock x:Name="StatusDescription"
+                                   FontSize="12" Foreground="#A0A0B8" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ========== License Details Card ========== -->
+            <Border x:Name="DetailsCard" Background="#2D2D42" CornerRadius="12"
+                    Margin="0,16,0,0" Visibility="Collapsed">
+                <StackPanel>
+                    <!-- License Key -->
+                    <Grid Margin="16,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#xE192;"
+                                   FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                   Foreground="#3B82F6" Width="20"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="License Key"
+                                   FontSize="12" Foreground="#A0A0B8"
+                                   VerticalAlignment="Center" Margin="12,0,0,0" />
+                        <TextBlock x:Name="LicenseKeyText" Grid.Column="3"
+                                   FontSize="12" FontWeight="Medium"
+                                   FontFamily="Consolas" Foreground="White" />
+                    </Grid>
+                    <Border Height="1" Background="#1AFFFFFF" Margin="16,0" />
+
+                    <!-- Plan -->
+                    <Grid Margin="16,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#xE8C7;"
+                                   FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                   Foreground="#8B5CF6" Width="20"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="Plan"
+                                   FontSize="12" Foreground="#A0A0B8"
+                                   VerticalAlignment="Center" Margin="12,0,0,0" />
+                        <TextBlock x:Name="PlanText" Grid.Column="3"
+                                   FontSize="12" FontWeight="Medium"
+                                   Foreground="White" />
+                    </Grid>
+                    <Border Height="1" Background="#1AFFFFFF" Margin="16,0" />
+
+                    <!-- Status -->
+                    <Grid Margin="16,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#xE73E;"
+                                   FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                   Foreground="#22C55E" Width="20"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="Status"
+                                   FontSize="12" Foreground="#A0A0B8"
+                                   VerticalAlignment="Center" Margin="12,0,0,0" />
+                        <TextBlock x:Name="LicenseStatusText" Grid.Column="3"
+                                   FontSize="12" FontWeight="Medium"
+                                   Foreground="White" />
+                    </Grid>
+
+                    <!-- Expires (conditional) -->
+                    <Border x:Name="ExpiresDivider" Height="1" Background="#1AFFFFFF"
+                            Margin="16,0" Visibility="Collapsed" />
+                    <Grid x:Name="ExpiresRow" Margin="16,10" Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#xE787;"
+                                   FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                   Foreground="#F97316" Width="20"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="Expires"
+                                   FontSize="12" Foreground="#A0A0B8"
+                                   VerticalAlignment="Center" Margin="12,0,0,0" />
+                        <TextBlock x:Name="ExpiresText" Grid.Column="3"
+                                   FontSize="12" FontWeight="Medium"
+                                   Foreground="White" />
+                    </Grid>
+
+                    <Border Height="1" Background="#1AFFFFFF" Margin="16,0" />
+
+                    <!-- Machine ID -->
+                    <Grid Margin="16,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#xE7F7;"
+                                   FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                   Foreground="#9CA3AF" Width="20"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="Machine ID"
+                                   FontSize="12" Foreground="#A0A0B8"
+                                   VerticalAlignment="Center" Margin="12,0,0,0" />
+                        <TextBlock x:Name="MachineIdText" Grid.Column="3"
+                                   FontSize="12" FontWeight="Medium"
+                                   FontFamily="Consolas" Foreground="White" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- ========== Deactivate Button ========== -->
+            <Button x:Name="DeactivateButton"
+                    Margin="0,16,0,0"
+                    HorizontalAlignment="Left"
+                    Visibility="Collapsed"
+                    Click="Deactivate_Click"
+                    Cursor="Hand">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="deactivateBorder"
+                                Background="#14EF4444" CornerRadius="8"
+                                Padding="16,8">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE72B;"
+                                           FontFamily="Segoe MDL2 Assets"
+                                           FontSize="11" FontWeight="Medium"
+                                           Foreground="#CCEF4444"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,6,0" />
+                                <TextBlock Text="Deactivate License"
+                                           FontSize="12" FontWeight="Medium"
+                                           Foreground="#CCEF4444" />
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="deactivateBorder" Property="Background" Value="#26EF4444" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+
+            <!-- ========== Permissions Section ========== -->
+            <StackPanel Margin="0,24,0,0">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <TextBlock Text="&#xEA18;"
+                               FontFamily="Segoe MDL2 Assets"
+                               FontSize="14" FontWeight="SemiBold"
+                               Foreground="#3B82F6"
+                               VerticalAlignment="Center"
+                               Margin="0,0,8,0" />
+                    <TextBlock Text="Permissions"
+                               FontSize="14" FontWeight="Bold"
+                               Foreground="White" />
+                </StackPanel>
+
+                <Border Background="#2D2D42" CornerRadius="12">
+                    <StackPanel>
+                        <!-- Microphone -->
+                        <Grid Margin="16,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="MicPermIcon" Grid.Column="0"
+                                       FontFamily="Segoe MDL2 Assets"
+                                       FontSize="16"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,12,0" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Microphone"
+                                           FontSize="12" FontWeight="Medium"
+                                           Foreground="White" />
+                                <TextBlock Text="Voice recording"
+                                           FontSize="10" Foreground="#A0A0B8" />
+                            </StackPanel>
+                            <Border x:Name="MicPermBadge" Grid.Column="2"
+                                    CornerRadius="4" Padding="6,2">
+                                <TextBlock x:Name="MicPermText"
+                                           FontSize="10" FontWeight="Medium" />
+                            </Border>
+                        </Grid>
+
+                        <Border Height="1" Background="#1AFFFFFF" Margin="16,0" />
+
+                        <!-- Keyboard -->
+                        <Grid Margin="16,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="KeyPermIcon" Grid.Column="0"
+                                       FontFamily="Segoe MDL2 Assets"
+                                       FontSize="16"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,12,0" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Keyboard Access"
+                                           FontSize="12" FontWeight="Medium"
+                                           Foreground="White" />
+                                <TextBlock Text="Global hotkey detection"
+                                           FontSize="10" Foreground="#A0A0B8" />
+                            </StackPanel>
+                            <Border x:Name="KeyPermBadge" Grid.Column="2"
+                                    CornerRadius="4" Padding="6,2">
+                                <TextBlock x:Name="KeyPermText"
+                                           FontSize="10" FontWeight="Medium" />
+                            </Border>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
