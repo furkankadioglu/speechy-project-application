@@ -382,7 +382,7 @@ struct LicenseView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.secondary)
 
-                TextField("XXXX-XXXX-XXXX-XXXX", text: $licenseKey)
+                TextField("Paste your license key here", text: $licenseKey)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 14, design: .monospaced))
                     .disabled(isLoading)
