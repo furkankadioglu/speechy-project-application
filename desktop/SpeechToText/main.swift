@@ -612,6 +612,114 @@ class AudioDeviceManager: ObservableObject {
     }
 }
 
+// MARK: - Media Control Manager
+class MediaControlManager {
+    static let shared = MediaControlManager()
+
+    /// Whether we were the ones who paused media (so we only resume if we paused it)
+    private var didPauseMedia = false
+
+    /// Check if any media player is currently playing using AppleScript
+    private func isMediaPlaying() -> Bool {
+        // Check common media players via AppleScript
+        // First try the system-wide "Now Playing" via osascript
+        let players = [
+            ("Music", "application \"Music\" is running and player state of application \"Music\" is playing"),
+            ("Spotify", "application \"Spotify\" is running and player state of application \"Spotify\" is playing"),
+        ]
+
+        for (name, condition) in players {
+            let script = "tell application \"System Events\" to return \(condition)"
+            if let appleScript = NSAppleScript(source: script) {
+                var error: NSDictionary?
+                let result = appleScript.executeAndReturnError(&error)
+                if error == nil && result.booleanValue {
+                    log("[Speechy] MediaControl: \(name) is currently playing")
+                    return true
+                }
+            }
+        }
+
+        return false
+    }
+
+    /// Simulate media play/pause key press using CGEvent (NX_KEYTYPE_PLAY = 16)
+    private func sendMediaPlayPauseKey() {
+        // NX_KEYTYPE_PLAY = 16
+        let keyCode: UInt32 = 16
+
+        // Key down
+        let keyDownEvent = NSEvent.otherEvent(
+            with: .systemDefined,
+            location: .zero,
+            modifierFlags: NSEvent.ModifierFlags(rawValue: 0xa00),
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            subtype: 8,
+            data1: Int((Int(keyCode) << 16) | (0xa << 8)),
+            data2: -1
+        )
+        if let cgEvent = keyDownEvent?.cgEvent {
+            cgEvent.post(tap: .cghidEventTap)
+        }
+
+        // Key up
+        let keyUpEvent = NSEvent.otherEvent(
+            with: .systemDefined,
+            location: .zero,
+            modifierFlags: NSEvent.ModifierFlags(rawValue: 0xb00),
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            subtype: 8,
+            data1: Int((Int(keyCode) << 16) | (0xb << 8)),
+            data2: -1
+        )
+        if let cgEvent = keyUpEvent?.cgEvent {
+            cgEvent.post(tap: .cghidEventTap)
+        }
+    }
+
+    /// Called when recording starts. Pauses media if playing.
+    func pauseMediaIfNeeded() {
+        guard SettingsManager.shared.pauseMediaDuringRecording else {
+            log("[Speechy] MediaControl: Feature disabled, skipping")
+            return
+        }
+
+        didPauseMedia = false
+
+        if isMediaPlaying() {
+            log("[Speechy] MediaControl: Media is playing, pausing...")
+            sendMediaPlayPauseKey()
+            didPauseMedia = true
+            log("[Speechy] MediaControl: Media paused")
+        } else {
+            log("[Speechy] MediaControl: No media playing, nothing to pause")
+        }
+    }
+
+    /// Called when recording/transcription ends. Resumes media if we paused it.
+    func resumeMediaIfNeeded() {
+        guard SettingsManager.shared.pauseMediaDuringRecording else { return }
+
+        if didPauseMedia {
+            log("[Speechy] MediaControl: Resuming media playback...")
+            sendMediaPlayPauseKey()
+            didPauseMedia = false
+            log("[Speechy] MediaControl: Media resumed")
+        } else {
+            log("[Speechy] MediaControl: We didn't pause media, not resuming")
+        }
+    }
+
+    /// Reset state (e.g., if recording is cancelled)
+    func reset() {
+        didPauseMedia = false
+    }
+}
+
 // MARK: - Model Download Manager
 class ModelDownloadManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     static let shared = ModelDownloadManager()
@@ -768,6 +876,7 @@ class SettingsManager: ObservableObject {
     @Published var waveMultiplier: Double
     @Published var waveExponent: Double
     @Published var waveDivisor: Double
+    @Published var pauseMediaDuringRecording: Bool
 
     var onSettingsChanged: (() -> Void)?
     private var cancellables = Set<AnyCancellable>()
@@ -834,6 +943,13 @@ class SettingsManager: ObservableObject {
         let savedDivisor = defaults.double(forKey: "waveDivisor")
         _waveDivisor = Published(initialValue: savedDivisor == 0 ? 1.0 : savedDivisor)
 
+        // Default ON if key has never been set
+        if defaults.object(forKey: "pauseMediaDuringRecording") == nil {
+            _pauseMediaDuringRecording = Published(initialValue: true)
+        } else {
+            _pauseMediaDuringRecording = Published(initialValue: defaults.bool(forKey: "pauseMediaDuringRecording"))
+        }
+
         // Auto-save and notify on changes
         $slot1.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
@@ -857,6 +973,8 @@ class SettingsManager: ObservableObject {
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
         $waveDivisor.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
+        $pauseMediaDuringRecording.dropFirst()
+            .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
     }
 
     #if TESTING
@@ -874,6 +992,7 @@ class SettingsManager: ObservableObject {
         _waveMultiplier = Published(initialValue: 100.0)
         _waveExponent = Published(initialValue: 0.45)
         _waveDivisor = Published(initialValue: 1.0)
+        _pauseMediaDuringRecording = Published(initialValue: true)
     }
     #endif
 
@@ -890,6 +1009,7 @@ class SettingsManager: ObservableObject {
         defaults.set(waveMultiplier, forKey: "waveMultiplier")
         defaults.set(waveExponent, forKey: "waveExponent")
         defaults.set(waveDivisor, forKey: "waveDivisor")
+        defaults.set(pauseMediaDuringRecording, forKey: "pauseMediaDuringRecording")
     }
 
     func addToHistory(_ text: String, language: String) {
@@ -1650,6 +1770,31 @@ struct AdvancedTab: View {
 
                             Toggle("", isOn: $settings.launchAtLogin)
                                 .toggleStyle(SwitchToggleStyle(tint: .blue))
+                                .labelsHidden()
+                        }
+                        .padding()
+
+                        Divider()
+                            .padding(.horizontal)
+
+                        HStack {
+                            Image(systemName: "pause.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.pink)
+                                .frame(width: 28)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Pause Media During Recording")
+                                    .font(.subheadline.weight(.medium))
+                                Text("Automatically pause music when recording and resume when done")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+
+                            Toggle("", isOn: $settings.pauseMediaDuringRecording)
+                                .toggleStyle(SwitchToggleStyle(tint: .pink))
                                 .labelsHidden()
                         }
                         .padding()
@@ -2580,6 +2725,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         activeLanguage = language
         activeFlag = flag
         log("[Speechy] Recording started - lang: \(language)")
+
+        // Pause media if playing
+        MediaControlManager.shared.pauseMediaIfNeeded()
+
         DispatchQueue.main.async {
             self.overlayWindow.setState(.recording, flag: flag)
         }
@@ -2601,6 +2750,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self, let audioURL = url else {
                 DispatchQueue.main.async {
                     self?.overlayWindow.setState(.hidden)
+                    // Resume media even if recording produced no audio
+                    MediaControlManager.shared.resumeMediaIfNeeded()
                 }
                 return
             }
@@ -2612,6 +2763,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         SettingsManager.shared.addToHistory(text, language: self.activeLanguage)
                         self.pasteText(text)
                     }
+                    // Resume media after transcription is complete
+                    MediaControlManager.shared.resumeMediaIfNeeded()
                 }
                 try? FileManager.default.removeItem(at: audioURL)
             }
