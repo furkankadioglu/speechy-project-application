@@ -1,12 +1,13 @@
 # Speechy
 
-On-device speech-to-text for macOS and iOS. Uses [whisper.cpp](https://github.com/ggerganov/whisper.cpp) for fully offline transcription — no cloud services, no API keys, no internet required (except for initial model download).
+On-device speech-to-text for macOS, Windows, and iOS. Uses [whisper.cpp](https://github.com/ggerganov/whisper.cpp) for fully offline transcription — no cloud services, no API keys, no internet required (except for initial model download).
 
 ## Components
 
 ```
 speechy-project-application/
 ├── desktop/    macOS menu bar app (Swift, whisper-cli)
+├── windows/    Windows system tray app (C#, WPF, .NET 8)
 └── mobile/     iOS app (SwiftUI, SwiftWhisper)
 ```
 
@@ -40,6 +41,35 @@ swiftc main.swift -o SpeechyApp \
   -framework Carbon -framework CoreAudio
 ```
 
+### Windows — System Tray App
+
+System tray app for Windows that transcribes speech to text via configurable hotkeys and auto-pastes the result. Mirrors macOS app functionality.
+
+- **Framework**: C# / WPF / .NET 8
+- **Hotkeys**: 4 configurable slots — 2 push-to-talk, 2 toggle-to-talk (low-level keyboard hook)
+- **Languages**: 29 languages with per-slot language selection
+- **Models**: 4 tiers — Fast (Base), Accurate (Small), Precise (Medium), Ultimate (Large)
+- **Audio Input**: NAudio WaveInEvent, records to 16kHz mono PCM WAV
+- **Auto-paste**: Clipboard + SendInput Ctrl+V simulation
+- **History**: All transcriptions saved with language and timestamp
+- **System Tray**: Runs in system tray with Ctrl+Shift+S for settings
+- **Licensing**: Same license system as macOS (speechy.frkn.com.tr)
+
+**Requirements**: Windows 10+, .NET 8.0 Runtime, [whisper-cli.exe](https://github.com/ggerganov/whisper.cpp)
+
+**Build & Run**:
+```bash
+cd windows
+dotnet build
+dotnet run --project Speechy/Speechy.csproj
+```
+
+**Publish** (self-contained single file):
+```bash
+cd windows
+dotnet publish -c Release -r win-x64 --self-contained
+```
+
 ### Mobile — iOS App
 
 Standalone iOS app with on-device Whisper transcription using Apple Neural Engine acceleration.
@@ -61,7 +91,8 @@ Both apps follow the same pattern:
 2. Whisper model transcribes audio to text locally
 3. Result displayed/pasted — no network calls involved
 
-**Desktop** uses whisper-cpp CLI as a subprocess, records to WAV file, passes file path.
+**Desktop (macOS)** uses whisper-cpp CLI as a subprocess, records to WAV file, passes file path.
+**Windows** uses whisper-cli.exe as a subprocess via NAudio for recording, same approach as macOS.
 **Mobile** uses SwiftWhisper (whisper.cpp Swift wrapper) in-process, with CoreML Neural Engine acceleration.
 
 ## Quick Start
@@ -72,6 +103,9 @@ brew install whisper-cpp
 cd desktop && ./build.sh
 ./test.sh                             # Run 58 tests
 open /Applications/Speechy.app
+
+# Windows
+cd windows && dotnet build
 
 # Mobile
 cd mobile
