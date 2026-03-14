@@ -10,8 +10,8 @@
     --blue: #007AFF;
     --purple: #AF52DE;
     --dark: #0D1117;
-    --card-bg: rgba(255,255,255,0.06);
-    --card-border: rgba(255,255,255,0.08);
+    --card-bg: #171B22;
+    --card-border: #21262D;
     --text: #E6EDF3;
     --text-muted: #8B949E;
     --green: #3FB950;
@@ -54,13 +54,7 @@
     text-align: center;
   }
   .cover::before {
-    content: '';
-    position: absolute;
-    inset: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(ellipse at 40% 50%, rgba(0,122,255,0.12) 0%, transparent 50%),
-                radial-gradient(ellipse at 60% 50%, rgba(175,82,222,0.10) 0%, transparent 50%);
+    display: none;
   }
   .cover-content { position: relative; z-index: 1; }
   .logo-box {
@@ -68,12 +62,11 @@
     background: linear-gradient(135deg, var(--blue), var(--purple));
     border-radius: 22px;
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 20px 60px rgba(0,122,255,0.3), 0 0 100px rgba(175,82,222,0.15);
+    box-shadow: 0 20px 60px #003366, 0 0 100px #2A1540;
   }
   .cover h1 {
     font-size: 48pt; font-weight: 900;
-    background: linear-gradient(135deg, #fff, #c8d6e5);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    color: #ffffff;
     letter-spacing: -1px; margin-bottom: 8px;
   }
   .cover .tagline {
@@ -87,8 +80,7 @@
   .cover-stats { display: flex; gap: 56px; justify-content: center; }
   .cover-stat .num {
     font-size: 26pt; font-weight: 800;
-    background: linear-gradient(135deg, var(--blue), var(--purple));
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    color: #58A6FF;
   }
   .cover-stat .lbl {
     font-size: 7pt; color: var(--text-muted);
@@ -108,8 +100,7 @@
   }
   .ph h2 {
     font-size: 20pt; font-weight: 800;
-    background: linear-gradient(135deg, var(--blue), var(--purple));
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    color: #007AFF;
   }
   .pn { font-size: 8pt; color: var(--text-muted); font-weight: 600; letter-spacing: 2px; }
 
@@ -135,10 +126,10 @@
     font-size: 16pt; margin-bottom: 10px;
   }
 
-  .prob { background: linear-gradient(135deg, rgba(248,81,73,0.08), rgba(248,81,73,0.02)); border-color: rgba(248,81,73,0.15); }
-  .prob .ci { background: rgba(248,81,73,0.15); }
-  .sol { background: linear-gradient(135deg, rgba(63,185,80,0.08), rgba(63,185,80,0.02)); border-color: rgba(63,185,80,0.15); }
-  .sol .ci { background: rgba(63,185,80,0.15); }
+  .prob { background: #1A1214; border-color: #3D1A18; }
+  .prob .ci { background: #3D1A18; }
+  .sol { background: #121A14; border-color: #1A3D1E; }
+  .sol .ci { background: #1A3D1E; }
 
   /* Flow */
   .flow { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 14px; }
@@ -157,26 +148,25 @@
   .bar { width: 100%; max-width: 36px; border-radius: 5px 5px 0 0; min-height: 6px; }
   .bv { font-size: 6.5pt; font-weight: 700; color: #fff; text-align: center; margin-bottom: 3px; }
   .bl { font-size: 6.5pt; color: var(--text-muted); margin-top: 4px; text-align: center; }
-  .bb { background: linear-gradient(180deg, var(--blue), rgba(0,122,255,0.6)); }
-  .bp { background: linear-gradient(180deg, var(--purple), rgba(175,82,222,0.6)); }
-  .bgr { background: linear-gradient(180deg, var(--green), rgba(63,185,80,0.6)); }
+  .bb { background: linear-gradient(180deg, #007AFF, #004C99); }
+  .bp { background: linear-gradient(180deg, #AF52DE, #6A3186); }
+  .bgr { background: linear-gradient(180deg, #3FB950, #267030); }
 
   .sg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
   .sb {
-    background: rgba(255,255,255,0.03); border: 1px solid var(--card-border);
+    background: #13161B; border: 1px solid var(--card-border);
     border-radius: 8px; padding: 10px; text-align: center;
   }
   .sb .v {
     font-size: 16pt; font-weight: 800;
-    background: linear-gradient(135deg, var(--blue), var(--purple));
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    color: #007AFF;
   }
   .sb .l { font-size: 6.5pt; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 1px; }
 
   /* Competition table */
   .ct { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 8pt; }
   .ct th {
-    background: rgba(255,255,255,0.05); padding: 8px 10px; text-align: left;
+    background: #171B22; padding: 8px 10px; text-align: left;
     font-weight: 600; color: var(--text-muted); text-transform: uppercase;
     font-size: 6.5pt; letter-spacing: 1px; border-bottom: 1px solid var(--card-border);
   }
@@ -184,7 +174,7 @@
   .ct th:last-child { border-radius: 0 6px 0 0; }
   .ct td { padding: 7px 10px; border-bottom: 1px solid var(--card-border); color: var(--text-muted); }
   .ct tr:last-child td { border-bottom: none; }
-  .ct .hl { background: linear-gradient(90deg, rgba(0,122,255,0.08), rgba(175,82,222,0.08)); }
+  .ct .hl { background: #121724; }
   .ct .hl td { color: #fff; font-weight: 600; }
   .chk { color: var(--green); font-weight: bold; }
   .crs { color: var(--red); font-weight: bold; }
@@ -192,8 +182,8 @@
   /* Pricing */
   .pc { text-align: center; padding: 14px 12px; position: relative; }
   .pc.feat {
-    background: linear-gradient(135deg, rgba(0,122,255,0.12), rgba(175,82,222,0.12));
-    border-color: rgba(0,122,255,0.3);
+    background: #121724;
+    border-color: #1A3A66;
   }
   .pc .tier { font-size: 7pt; text-transform: uppercase; letter-spacing: 2px; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; }
   .pc .price { font-size: 20pt; font-weight: 800; color: #fff; margin-bottom: 2px; }
@@ -218,7 +208,7 @@
   .hb { margin-top: 8px; }
   .hr { display: flex; align-items: center; margin-bottom: 6px; gap: 8px; }
   .hl2 { width: 90px; font-size: 7.5pt; color: var(--text-muted); text-align: right; flex-shrink: 0; }
-  .ht { flex: 1; height: 16px; background: rgba(255,255,255,0.04); border-radius: 4px; overflow: hidden; }
+  .ht { flex: 1; height: 16px; background: #14171C; border-radius: 4px; overflow: hidden; }
   .hf { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; }
   .hv { font-size: 6.5pt; font-weight: 700; color: #fff; }
 
@@ -241,9 +231,9 @@
   .seg p { font-size: 7pt; color: var(--text-muted); line-height: 1.4; }
   .seg-tags { margin-top: 4px; display: flex; gap: 4px; }
   .tag { padding: 1px 6px; border-radius: 3px; font-size: 6pt; }
-  .tag-blue { background: rgba(0,122,255,0.1); color: var(--cyan); }
-  .tag-green { background: rgba(63,185,80,0.1); color: var(--green); }
-  .tag-orange { background: rgba(240,136,62,0.1); color: var(--orange); }
+  .tag-blue { background: #0D1A2E; color: var(--cyan); }
+  .tag-green { background: #0F1D13; color: var(--green); }
+  .tag-orange { background: #1D1610; color: var(--orange); }
 
   /* CTA */
   .cta {
@@ -251,16 +241,12 @@
     justify-content: center; align-items: center; text-align: center;
   }
   .cta::before {
-    content: ''; position: absolute; inset: -50%;
-    width: 200%; height: 200%;
-    background: radial-gradient(ellipse at 50% 50%, rgba(0,122,255,0.08) 0%, transparent 60%),
-                radial-gradient(ellipse at 50% 60%, rgba(175,82,222,0.06) 0%, transparent 50%);
+    display: none;
   }
   .cta-in { position: relative; z-index: 1; max-width: 680px; }
   .cta-in h2 {
     font-size: 28pt; font-weight: 800;
-    background: linear-gradient(135deg, #fff, #c8d6e5);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    color: #ffffff;
     margin-bottom: 10px;
   }
   .cta-in .sub { font-size: 10pt; color: var(--text-muted); margin-bottom: 28px; line-height: 1.7; }
@@ -271,8 +257,7 @@
   }
   .cb .v {
     font-size: 20pt; font-weight: 800;
-    background: linear-gradient(135deg, var(--blue), var(--purple));
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    color: #007AFF;
     margin-bottom: 4px;
   }
   .cb .l { font-size: 7.5pt; color: var(--text-muted); line-height: 1.4; }
@@ -396,7 +381,7 @@
         <div class="bg"><div class="bv">$45.8B</div><div class="bar bgr" style="height:61%;"></div><div class="bl">2031</div></div>
         <div class="bg"><div class="bv">$75.5B</div><div class="bar bgr" style="height:100%;"></div><div class="bl">2033</div></div>
       </div>
-      <div style="margin-top:12px; padding:10px 14px; background:rgba(63,185,80,0.08); border:1px solid rgba(63,185,80,0.15); border-radius:8px;">
+      <div style="margin-top:12px; padding:10px 14px; background:#121A14; border:1px solid #1A3D1E; border-radius:8px;">
         <div style="font-size:8pt; color:var(--green); font-weight:700; margin-bottom:2px;">Neden On-Device?</div>
         <div style="font-size:7pt; color:var(--text-muted); line-height:1.5;">Edge AI dağıtımlarında on-device segmenti <strong style="color:#fff;">%59.47</strong> pazar payına sahip (2025). Düzenleyici baskılar (GDPR, HIPAA, KVKK) bu oranı hızla artırıyor.</div>
       </div>
@@ -506,24 +491,24 @@
       <div class="card" style="padding:14px;">
         <h3 style="margin-bottom:8px;">Birim Ekonomisi</h3>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
-          <div style="background:rgba(0,122,255,0.08); border-radius:6px; padding:8px; text-align:center;">
+          <div style="background:#0D1520; border-radius:6px; padding:8px; text-align:center;">
             <div style="font-size:13pt; font-weight:800; color:var(--cyan);">$0</div>
             <div style="font-size:6pt; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px;">Marjinal Maliyet / Kullanıcı</div>
           </div>
-          <div style="background:rgba(63,185,80,0.08); border-radius:6px; padding:8px; text-align:center;">
+          <div style="background:#121A14; border-radius:6px; padding:8px; text-align:center;">
             <div style="font-size:13pt; font-weight:800; color:var(--green);">%92</div>
             <div style="font-size:6pt; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px;">Brüt Kâr Marjı</div>
           </div>
-          <div style="background:rgba(175,82,222,0.08); border-radius:6px; padding:8px; text-align:center;">
+          <div style="background:#17121D; border-radius:6px; padding:8px; text-align:center;">
             <div style="font-size:13pt; font-weight:800; color:var(--purple);">$108</div>
             <div style="font-size:6pt; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px;">Ortalama LTV</div>
           </div>
-          <div style="background:rgba(240,136,62,0.08); border-radius:6px; padding:8px; text-align:center;">
+          <div style="background:#1D1610; border-radius:6px; padding:8px; text-align:center;">
             <div style="font-size:13pt; font-weight:800; color:var(--orange);">$18</div>
             <div style="font-size:6pt; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px;">Hedef CAC</div>
           </div>
         </div>
-        <div style="margin-top:8px; padding:6px 10px; background:rgba(63,185,80,0.06); border-radius:6px; text-align:center;">
+        <div style="margin-top:8px; padding:6px 10px; background:#111913; border-radius:6px; text-align:center;">
           <span style="font-size:7.5pt; color:var(--green); font-weight:600;">LTV:CAC = 6:1</span>
           <span style="font-size:6.5pt; color:var(--text-muted);"> — Yerel işleme sayesinde sunucu maliyeti sıfır</span>
         </div>
@@ -695,11 +680,11 @@
         </div>
         <div class="hr">
           <div class="hl2">Ekip Genişleme</div>
-          <div class="ht"><div class="hf" style="width:20%; background:linear-gradient(90deg,var(--green),rgba(63,185,80,0.6));"><span class="hv">%20 — $100K</span></div></div>
+          <div class="ht"><div class="hf" style="width:20%; background:linear-gradient(90deg,#3FB950,#267030);"><span class="hv">%20 — $100K</span></div></div>
         </div>
         <div class="hr">
           <div class="hl2">Operasyon</div>
-          <div class="ht"><div class="hf" style="width:10%; background:linear-gradient(90deg,var(--orange),rgba(240,136,62,0.6));"><span class="hv">%10</span></div></div>
+          <div class="ht"><div class="hf" style="width:10%; background:linear-gradient(90deg,#F0883E,#904E25);"><span class="hv">%10</span></div></div>
         </div>
       </div>
     </div>
