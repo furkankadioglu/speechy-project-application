@@ -17,6 +17,20 @@ function handle_signup_route(string $method, string $path): bool
 
 function handle_signup(): void
 {
+    // Rate limit: max 5 signups per IP per hour
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    $pdo = get_db();
+
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM email_verifications WHERE created_at > NOW() - INTERVAL '1 hour' AND ip_address = :ip"
+    );
+    $stmt->execute(['ip' => $ip]);
+    $recent_count = (int) $stmt->fetchColumn();
+
+    if ($recent_count >= 5) {
+        json_error('Too many requests. Please try again later.', 429);
+    }
+
     $body = get_json_body();
     $email = sanitize_string($body['email'] ?? '', 255);
 
@@ -29,7 +43,6 @@ function handle_signup(): void
     }
 
     $email = strtolower($email);
-    $pdo = get_db();
 
     // Check if a trial license already exists for this email
     $stmt = $pdo->prepare(
@@ -60,13 +73,14 @@ function handle_signup(): void
     $expires_at = date('c', strtotime('+24 hours'));
 
     $stmt = $pdo->prepare('
-        INSERT INTO email_verifications (email, token, expires_at)
-        VALUES (:email, :token, :expires_at)
+        INSERT INTO email_verifications (email, token, expires_at, ip_address)
+        VALUES (:email, :token, :expires_at, :ip)
     ');
     $stmt->execute([
         'email' => $email,
         'token' => $token,
         'expires_at' => $expires_at,
+        'ip' => $ip,
     ]);
 
     $config = require __DIR__ . '/../config.php';

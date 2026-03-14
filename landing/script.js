@@ -176,6 +176,27 @@
     });
   }
 
+  // ── CAPTCHA ────────────────────────────────────────────────────
+  var captchaAnswer = 0;
+
+  function generateCaptcha() {
+    var ops = [
+      function () { var a = rand(2, 15), b = rand(1, 10); return { q: a + ' + ' + b, a: a + b }; },
+      function () { var a = rand(10, 25), b = rand(1, a - 1); return { q: a + ' − ' + b, a: a - b }; },
+      function () { var a = rand(2, 9), b = rand(2, 6); return { q: a + ' × ' + b, a: a * b }; },
+    ];
+    var pick = ops[Math.floor(Math.random() * ops.length)]();
+    captchaAnswer = pick.a;
+    var el = document.getElementById('captcha-question');
+    if (el) el.textContent = pick.q + ' =';
+    var inp = document.getElementById('captcha-answer');
+    if (inp) { inp.value = ''; inp.classList.remove('captcha-error'); }
+  }
+
+  function rand(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
   // ── Email signup form ──────────────────────────────────────────
   function initSignupForm() {
     var form = document.getElementById('signup-form');
@@ -188,6 +209,10 @@
     var btnText = btn.querySelector('.btn-text');
     var btnSpinner = btn.querySelector('.btn-spinner');
     var message = document.getElementById('signup-message');
+    var captchaInput = document.getElementById('captcha-answer');
+
+    // Generate initial captcha
+    generateCaptcha();
 
     form.addEventListener('submit', function (e) {
       e.preventDefault();
@@ -195,6 +220,15 @@
       var email = input.value.trim().toLowerCase();
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         showMessage('Please enter a valid email address.', 'error');
+        return;
+      }
+
+      // Validate captcha
+      var userAnswer = parseInt(captchaInput.value, 10);
+      if (isNaN(userAnswer) || userAnswer !== captchaAnswer) {
+        captchaInput.classList.add('captcha-error');
+        showMessage('Wrong answer. Please solve the math problem.', 'error');
+        generateCaptcha();
         return;
       }
 
@@ -214,12 +248,15 @@
         if (result.ok) {
           showMessage('Check your inbox! We sent a verification link to ' + email, 'success');
           input.value = '';
+          generateCaptcha();
         } else {
           showMessage(result.data.error || 'Something went wrong. Please try again.', 'error');
+          generateCaptcha();
         }
       })
       .catch(function () {
         showMessage('Could not connect to the server. Please try again later.', 'error');
+        generateCaptcha();
       })
       .finally(function () {
         btn.disabled = false;
