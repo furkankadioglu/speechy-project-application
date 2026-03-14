@@ -1707,6 +1707,12 @@ struct SettingsView: View {
                         isSelected: selectedTab == 2,
                         action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 2 } }
                     )
+                    SidebarItem(
+                        title: "License",
+                        icon: "key.fill",
+                        isSelected: selectedTab == 3,
+                        action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 3 } }
+                    )
                 }
                 .padding(.horizontal, 8)
 
@@ -1745,8 +1751,10 @@ struct SettingsView: View {
                     SettingsTab(settings: settings)
                 case 1:
                     AdvancedTab(settings: settings)
-                default:
+                case 2:
                     HistoryTab(settings: settings)
+                default:
+                    LicenseTab()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -2631,6 +2639,215 @@ class SpeechyIconView: NSView {
     }
 }
 
+// MARK: - License Tab
+struct LicenseTab: View {
+    @ObservedObject var licenseManager = LicenseManager.shared
+    @State private var showDeactivateConfirm = false
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                licenseHeader
+                licenseStatusCard
+                if licenseManager.isLicensed {
+                    licenseDetailsCard
+                    deactivateButton
+                }
+                permissionsSection
+                Spacer()
+            }
+            .padding(28)
+        }
+    }
+
+    private var licenseHeader: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "key.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.orange)
+                Text("License Information")
+                    .font(.system(size: 18, weight: .bold))
+            }
+            Text("Manage your Speechy license and subscription.")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.bottom, 4)
+    }
+
+    private var licenseStatusCard: some View {
+        HStack {
+            ZStack {
+                Circle()
+                    .fill(licenseManager.isLicensed ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                Image(systemName: licenseManager.isLicensed ? "checkmark.seal.fill" : "xmark.seal.fill")
+                    .font(.system(size: 22))
+                    .foregroundColor(licenseManager.isLicensed ? .green : .red)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(licenseManager.isLicensed ? "License Active" : "No Active License")
+                    .font(.system(size: 15, weight: .semibold))
+                Text(licenseManager.isLicensed ? "Your Speechy license is valid and active." : "Please activate a license to use Speechy.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(licenseManager.isLicensed ? Color.green.opacity(0.05) : Color.red.opacity(0.05))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(licenseManager.isLicensed ? Color.green.opacity(0.2) : Color.red.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+
+    private var licenseDetailsCard: some View {
+        VStack(spacing: 0) {
+            licenseDetailRow(label: "License Key", value: maskedKey(licenseManager.storedLicenseKey ?? ""), icon: "key", color: .blue, mono: true)
+            Divider().padding(.horizontal, 16)
+            licenseDetailRow(label: "Plan", value: planLabel(licenseManager.licenseType), icon: "creditcard", color: .purple, mono: false)
+            Divider().padding(.horizontal, 16)
+            licenseDetailRow(label: "Status", value: licenseManager.licenseStatus.capitalized, icon: "checkmark.circle", color: .green, mono: false)
+            if !licenseManager.expiresAt.isEmpty && licenseManager.licenseType != "lifetime" {
+                Divider().padding(.horizontal, 16)
+                licenseDetailRow(label: "Expires", value: formatDate(licenseManager.expiresAt), icon: "calendar", color: .orange, mono: false)
+            }
+            Divider().padding(.horizontal, 16)
+            licenseDetailRow(label: "Machine ID", value: String(licenseManager.machineID.prefix(16)) + "...", icon: "desktopcomputer", color: .gray, mono: true)
+        }
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(12)
+    }
+
+    private var deactivateButton: some View {
+        Button(action: { showDeactivateConfirm = true }) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.uturn.left")
+                    .font(.system(size: 11, weight: .medium))
+                Text("Deactivate License")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundColor(.red.opacity(0.8))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.red.opacity(0.08))
+            .cornerRadius(8)
+        }
+        .buttonStyle(.plain)
+        .alert(isPresented: $showDeactivateConfirm) {
+            Alert(
+                title: Text("Deactivate License?"),
+                message: Text("This will remove the license from this device. You can reactivate it later."),
+                primaryButton: .destructive(Text("Deactivate")) {
+                    LicenseManager.shared.deactivateAndClear()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        if let appDelegate = NSApp.delegate as? AppDelegate {
+                            appDelegate.mainWindow?.close()
+                            appDelegate.showLicenseScreen()
+                        }
+                    }
+                },
+                secondaryButton: .cancel()
+            )
+        }
+    }
+
+    private var permissionsSection: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.blue)
+                Text("Permissions")
+                    .font(.system(size: 14, weight: .bold))
+                Spacer()
+            }
+            .padding(.top, 8)
+
+            let perms = checkPermissions()
+            VStack(spacing: 0) {
+                permissionRow(name: "Accessibility", granted: perms.accessibility, desc: "Global hotkey detection")
+                Divider().padding(.horizontal, 16)
+                permissionRow(name: "Microphone", granted: perms.microphone, desc: "Voice recording")
+            }
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(12)
+        }
+    }
+
+    func licenseDetailRow(label: String, value: String, icon: String, color: Color, mono: Bool) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 13))
+                .foregroundColor(color)
+                .frame(width: 20)
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+            Spacer()
+            Text(value)
+                .font(.system(size: 12, weight: .medium, design: mono ? .monospaced : .default))
+                .foregroundColor(.primary)
+                .textSelection(.enabled)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    func permissionRow(name: String, granted: Bool, desc: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: granted ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .font(.system(size: 16))
+                .foregroundColor(granted ? .green : .red)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name).font(.system(size: 12, weight: .medium))
+                Text(desc).font(.system(size: 10)).foregroundColor(.secondary)
+            }
+            Spacer()
+            Text(granted ? "Granted" : "Missing")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(granted ? .green : .red)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background((granted ? Color.green : Color.red).opacity(0.1))
+                .cornerRadius(4)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    func maskedKey(_ key: String) -> String {
+        guard key.count > 8 else { return key }
+        return "\(key.prefix(4))••••••••\(key.suffix(4))"
+    }
+
+    func planLabel(_ type: String) -> String {
+        switch type {
+        case "trial": return "Free Trial"
+        case "monthly": return "Monthly"
+        case "yearly": return "Annual"
+        case "lifetime": return "Lifetime"
+        default: return type.capitalized
+        }
+    }
+
+    func formatDate(_ dateStr: String) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate, .withTime, .withColonSeparatorInTime, .withTimeZone]
+        if let date = formatter.date(from: dateStr) {
+            let df = DateFormatter()
+            df.dateStyle = .medium
+            return df.string(from: date)
+        }
+        return String(dateStr.prefix(10))
+    }
+}
+
 // MARK: - Overlay Window
 class OverlayWindow: NSWindow {
     private let speechyIcon: SpeechyIconView
@@ -2781,6 +2998,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func handleSettingsHotkey() {
+        // Always check permissions first
+        let perms = checkPermissions()
+        if !perms.accessibility || !perms.microphone {
+            log("[Speechy] Cmd+Shift+S pressed but permissions missing, showing permission check")
+            showPermissionCheck(accessibility: perms.accessibility, microphone: perms.microphone)
+            return
+        }
+
         // If no license, show license screen instead of settings
         if !LicenseManager.shared.isLicensed {
             log("[Speechy] Cmd+Shift+S pressed but no license, showing license screen")
