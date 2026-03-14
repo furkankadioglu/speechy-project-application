@@ -103,7 +103,7 @@ function send_email(string $to_email, string $subject, string $html_body): bool
     usleep(300000); // 300ms
 
     $from_name = $onesignal['from_name'] ?? 'Speechy';
-    $from_email = $onesignal['from_email'] ?? 'noreply@speechy.app';
+    $from_email = $onesignal['from_email'] ?? 'noreply@frkn.com.tr';
 
     $result = onesignal_request('api/v1/notifications', [
         'app_id' => $onesignal['app_id'],

@@ -19,6 +19,6 @@ return [
         'app_id' => 'your-onesignal-app-id',
         'api_key' => 'your-onesignal-api-key',
         'from_name' => 'Speechy',
-        'from_email' => 'noreply@speechy.app',
+        'from_email' => 'noreply@frkn.com.tr',
     ],
 ];
