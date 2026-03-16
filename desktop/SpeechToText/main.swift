@@ -2650,73 +2650,43 @@ struct SlotConfigView: View {
                 .opacity(config.isEnabled ? 1 : 0.5)
             }
 
-            // Modifier keys
-            HStack(spacing: 6) {
-                ModifierToggle(label: "⇧", fullLabel: "Shift", flag: .maskShift, config: $config, accentColor: accentColor)
-                ModifierToggle(label: "⌃", fullLabel: "Control", flag: .maskControl, config: $config, accentColor: accentColor)
-                ModifierToggle(label: "⌥", fullLabel: "Option", flag: .maskAlternate, config: $config, accentColor: accentColor)
-                ModifierToggle(label: "⌘", fullLabel: "Command", flag: .maskCommand, config: $config, accentColor: accentColor)
-            }
-            .opacity(config.isEnabled ? 1 : 0.4)
-            .disabled(!config.isEnabled)
-
-            // Shortcut Key section
+            // Shortcut recorder — captures any key combination
             HStack(spacing: 10) {
-                Image(systemName: "command.square")
+                Image(systemName: "keyboard")
                     .foregroundColor(.secondary)
                     .font(.subheadline)
 
-                Text("Shortcut Key")
+                Text("Shortcut")
                     .font(.subheadline)
 
                 Spacer()
 
-                if config.keyCode >= 0 {
-                    // Show current key name and clear button
-                    HStack(spacing: 6) {
-                        Text(HotkeyConfig.keyName(for: config.keyCode))
-                            .font(.system(.subheadline, design: .monospaced).weight(.semibold))
-                            .foregroundColor(accentColor)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(accentColor.opacity(0.12))
-                            .cornerRadius(6)
-
-                        Button(action: {
-                            config.keyCode = -1
-                        }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 16))
-                                .foregroundColor(.secondary.opacity(0.7))
-                        }
-                        .buttonStyle(.plain)
-                        .help("Clear key (revert to modifier-only)")
-                    }
+                if isRecordingKey {
+                    Text("Press shortcut...")
+                        .font(.system(.caption, design: .monospaced).weight(.medium))
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.orange.opacity(0.12))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.orange.opacity(0.5), lineWidth: 1.5)
+                        )
                 } else {
-                    // Show "Modifier only" or recording state
-                    if isRecordingKey {
-                        Text("Press any key...")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(.orange)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Color.orange.opacity(0.12))
-                            .cornerRadius(6)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.orange.opacity(0.4), lineWidth: 1)
-                            )
-                    } else {
-                        Text("Modifier only")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+                    Text(config.displayName)
+                        .font(.system(.subheadline, design: .monospaced).weight(.semibold))
+                        .foregroundColor(accentColor)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(accentColor.opacity(0.1))
+                        .cornerRadius(8)
                 }
 
                 Button(action: {
                     isRecordingKey.toggle()
                 }) {
-                    Text(isRecordingKey ? "Cancel" : "Set Key")
+                    Text(isRecordingKey ? "Cancel" : "Record")
                         .font(.caption.weight(.medium))
                         .foregroundColor(isRecordingKey ? .red : .white)
                         .padding(.horizontal, 10)
@@ -2725,6 +2695,20 @@ struct SlotConfigView: View {
                         .cornerRadius(6)
                 }
                 .buttonStyle(.plain)
+
+                Button(action: {
+                    config.modifiers = 0
+                    config.keyCode = -1
+                }) {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .frame(width: 26, height: 26)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+                .help("Reset shortcut")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -2733,8 +2717,7 @@ struct SlotConfigView: View {
             .opacity(config.isEnabled ? 1 : 0.4)
             .disabled(!config.isEnabled)
             .background(
-                // Invisible key capture view
-                ShortcutKeyRecorder(isRecording: $isRecordingKey, keyCode: $config.keyCode)
+                ShortcutCombinationRecorder(isRecording: $isRecordingKey, config: $config)
                     .frame(width: 0, height: 0)
             )
 
@@ -2769,24 +2752,22 @@ struct SlotConfigView: View {
 }
 
 /// NSViewRepresentable that captures key presses when isRecording is true
-struct ShortcutKeyRecorder: NSViewRepresentable {
+/// Captures any key combination (modifiers + key, or modifiers only)
+struct ShortcutCombinationRecorder: NSViewRepresentable {
     @Binding var isRecording: Bool
-    @Binding var keyCode: Int64
+    @Binding var config: HotkeyConfig
 
-    func makeNSView(context: Context) -> ShortcutKeyRecorderView {
-        let view = ShortcutKeyRecorderView()
-        view.onKeyDown = { code in
-            // Ignore modifier-only keys (they have no useful keyCode for our purpose)
-            // Shift=56/60, Control=59/62, Option=58/61, Command=55/54
-            let modifierKeyCodes: Set<Int64> = [54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
-            if modifierKeyCodes.contains(code) { return }
-            self.keyCode = code
+    func makeNSView(context: Context) -> ShortcutCombinationRecorderView {
+        let view = ShortcutCombinationRecorderView()
+        view.onShortcutCaptured = { modifiers, keyCode in
+            self.config.modifiers = modifiers
+            self.config.keyCode = keyCode
             self.isRecording = false
         }
         return view
     }
 
-    func updateNSView(_ nsView: ShortcutKeyRecorderView, context: Context) {
+    func updateNSView(_ nsView: ShortcutCombinationRecorderView, context: Context) {
         if isRecording {
             DispatchQueue.main.async {
                 nsView.window?.makeFirstResponder(nsView)
@@ -2796,67 +2777,56 @@ struct ShortcutKeyRecorder: NSViewRepresentable {
     }
 }
 
-/// NSView subclass that listens for keyDown events to capture shortcut keys
-class ShortcutKeyRecorderView: NSView {
+class ShortcutCombinationRecorderView: NSView {
     var isActive = false
-    var onKeyDown: ((Int64) -> Void)?
+    /// Called with (modifierFlags rawValue, keyCode). keyCode = -1 for modifier-only.
+    var onShortcutCaptured: ((UInt64, Int64) -> Void)?
+
+    private let modifierKeyCodes: Set<UInt16> = [54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+    private var heldModifiers: UInt64 = 0
+    private var modifierReleaseTimer: Timer?
 
     override var acceptsFirstResponder: Bool { true }
 
     override func keyDown(with event: NSEvent) {
-        if isActive {
-            onKeyDown?(Int64(event.keyCode))
-        } else {
-            super.keyDown(with: event)
-        }
-    }
-}
-
-struct ModifierToggle: View {
-    let label: String
-    let fullLabel: String
-    let flag: CGEventFlags
-    @Binding var config: HotkeyConfig
-    let accentColor: Color
-    @State private var isHovering = false
-
-    var isOn: Bool {
-        config.modifierFlags.contains(flag)
+        guard isActive else { super.keyDown(with: event); return }
+        // A real key was pressed — capture modifiers + key
+        modifierReleaseTimer?.invalidate()
+        modifierReleaseTimer = nil
+        let mods = event.modifierFlags.intersection([.shift, .control, .option, .command])
+        let rawMods = modsToGCEventFlags(mods)
+        onShortcutCaptured?(rawMods, Int64(event.keyCode))
     }
 
-    var body: some View {
-        Button(action: {
-            withAnimation(.easeInOut(duration: 0.1)) {
-                var flags = config.modifierFlags
-                if isOn {
-                    flags.remove(flag)
-                } else {
-                    flags.insert(flag)
-                }
-                config.modifierFlags = flags
-            }
-        }) {
-            Text(label)
-                .font(.system(size: 18, weight: .medium))
-                .frame(maxWidth: .infinity)
-                .frame(height: 40)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(isOn ? accentColor : (isHovering ? Color.primary.opacity(0.05) : Color(NSColor.windowBackgroundColor)))
-                )
-                .foregroundColor(isOn ? .white : .primary)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(isOn ? accentColor : Color.primary.opacity(0.1), lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
-        .help(fullLabel)
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.1)) {
-                isHovering = hovering
+    override func flagsChanged(with event: NSEvent) {
+        guard isActive else { super.flagsChanged(with: event); return }
+        let mods = event.modifierFlags.intersection([.shift, .control, .option, .command])
+        let rawMods = modsToGCEventFlags(mods)
+
+        if rawMods != 0 {
+            // Modifiers are being held — remember them
+            heldModifiers = rawMods
+            modifierReleaseTimer?.invalidate()
+            modifierReleaseTimer = nil
+        } else if heldModifiers != 0 {
+            // All modifiers released — wait briefly to see if a key follows
+            // If no key comes, save as modifier-only shortcut
+            let captured = heldModifiers
+            modifierReleaseTimer?.invalidate()
+            modifierReleaseTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+                self?.heldModifiers = 0
+                self?.onShortcutCaptured?(captured, -1)
             }
         }
+    }
+
+    private func modsToGCEventFlags(_ mods: NSEvent.ModifierFlags) -> UInt64 {
+        var flags: UInt64 = 0
+        if mods.contains(.shift) { flags |= CGEventFlags.maskShift.rawValue }
+        if mods.contains(.control) { flags |= CGEventFlags.maskControl.rawValue }
+        if mods.contains(.option) { flags |= CGEventFlags.maskAlternate.rawValue }
+        if mods.contains(.command) { flags |= CGEventFlags.maskCommand.rawValue }
+        return flags
     }
 }
 
