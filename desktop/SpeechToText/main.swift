@@ -3235,12 +3235,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func showPermissionCheck(accessibility: Bool, microphone: Bool) {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 440, height: 520),
-            styleMask: [.titled, .closable],
+            styleMask: [.titled],
             backing: .buffered,
             defer: false
         )
         let view = PermissionCheckView(accessibility: accessibility, microphone: microphone) { [weak self] in
             log("[Speechy] All permissions granted, continuing initialization")
+            window.level = .normal
             window.close()
             self?.permissionWindow = nil
             self?.continueFullAppInit()
@@ -3249,6 +3250,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.title = "Speechy — Permissions"
         window.center()
         window.isReleasedWhenClosed = false
+        window.level = .floating
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         permissionWindow = window
