@@ -861,65 +861,80 @@ class MediaControlManager {
     /// Whether we were the ones who paused media (so we only resume if we paused it)
     private var didPauseMedia = false
 
-    /// Check if any media player is currently playing using AppleScript
-    private func isMediaPlaying() -> Bool {
-        // Check common media players via AppleScript
-        // First try the system-wide "Now Playing" via osascript
-        let players = [
-            ("Music", "application \"Music\" is running and player state of application \"Music\" is playing"),
-            ("Spotify", "application \"Spotify\" is running and player state of application \"Spotify\" is playing"),
-        ]
+    /// Which player we paused (so we can target resume correctly)
+    private var pausedPlayer: String?
 
-        for (name, condition) in players {
-            let script = "tell application \"System Events\" to return \(condition)"
-            if let appleScript = NSAppleScript(source: script) {
-                var error: NSDictionary?
-                let result = appleScript.executeAndReturnError(&error)
-                if error == nil && result.booleanValue {
-                    log("[Speechy] MediaControl: \(name) is currently playing")
-                    return true
-                }
+    /// Check if a specific media player is currently playing
+    private func isPlayerPlaying(_ appName: String) -> Bool {
+        // First check if the app is running
+        let checkRunning = """
+        tell application "System Events"
+            return (name of processes) contains "\(appName)"
+        end tell
+        """
+        guard let runScript = NSAppleScript(source: checkRunning) else { return false }
+        var error: NSDictionary?
+        let runResult = runScript.executeAndReturnError(&error)
+        if error != nil || !runResult.booleanValue { return false }
+
+        // App is running, check player state
+        let checkState = """
+        tell application "\(appName)"
+            return player state as string
+        end tell
+        """
+        guard let stateScript = NSAppleScript(source: checkState) else { return false }
+        var stateError: NSDictionary?
+        let stateResult = stateScript.executeAndReturnError(&stateError)
+        if stateError != nil { return false }
+
+        let state = stateResult.stringValue ?? ""
+        return state == "playing" || state == "kPSP"
+    }
+
+    /// Check if any media player is currently playing
+    private func isMediaPlaying() -> Bool {
+        let players = ["Spotify", "Music"]
+        for player in players {
+            if isPlayerPlaying(player) {
+                log("[Speechy] MediaControl: \(player) is currently playing")
+                pausedPlayer = player
+                return true
             }
         }
-
+        pausedPlayer = nil
         return false
     }
 
-    /// Simulate media play/pause key press using CGEvent (NX_KEYTYPE_PLAY = 16)
-    private func sendMediaPlayPauseKey() {
-        // NX_KEYTYPE_PLAY = 16
-        let keyCode: UInt32 = 16
-
-        // Key down
-        let keyDownEvent = NSEvent.otherEvent(
-            with: .systemDefined,
-            location: .zero,
-            modifierFlags: NSEvent.ModifierFlags(rawValue: 0xa00),
-            timestamp: 0,
-            windowNumber: 0,
-            context: nil,
-            subtype: 8,
-            data1: Int((Int(keyCode) << 16) | (0xa << 8)),
-            data2: -1
-        )
-        if let cgEvent = keyDownEvent?.cgEvent {
-            cgEvent.post(tap: .cghidEventTap)
+    /// Pause a specific media player via AppleScript
+    private func pausePlayer(_ appName: String) {
+        let script = """
+        tell application "\(appName)" to pause
+        """
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                log("[Speechy] MediaControl: Failed to pause \(appName): \(error)")
+            } else {
+                log("[Speechy] MediaControl: Paused \(appName)")
+            }
         }
+    }
 
-        // Key up
-        let keyUpEvent = NSEvent.otherEvent(
-            with: .systemDefined,
-            location: .zero,
-            modifierFlags: NSEvent.ModifierFlags(rawValue: 0xb00),
-            timestamp: 0,
-            windowNumber: 0,
-            context: nil,
-            subtype: 8,
-            data1: Int((Int(keyCode) << 16) | (0xb << 8)),
-            data2: -1
-        )
-        if let cgEvent = keyUpEvent?.cgEvent {
-            cgEvent.post(tap: .cghidEventTap)
+    /// Resume a specific media player via AppleScript
+    private func resumePlayer(_ appName: String) {
+        let script = """
+        tell application "\(appName)" to play
+        """
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                log("[Speechy] MediaControl: Failed to resume \(appName): \(error)")
+            } else {
+                log("[Speechy] MediaControl: Resumed \(appName)")
+            }
         }
     }
 
@@ -931,12 +946,13 @@ class MediaControlManager {
         }
 
         didPauseMedia = false
+        pausedPlayer = nil
 
-        if isMediaPlaying() {
-            log("[Speechy] MediaControl: Media is playing, pausing...")
-            sendMediaPlayPauseKey()
+        if isMediaPlaying(), let player = pausedPlayer {
+            log("[Speechy] MediaControl: \(player) is playing, pausing...")
+            pausePlayer(player)
             didPauseMedia = true
-            log("[Speechy] MediaControl: Media paused")
+            log("[Speechy] MediaControl: \(player) paused successfully")
         } else {
             log("[Speechy] MediaControl: No media playing, nothing to pause")
         }
@@ -946,11 +962,12 @@ class MediaControlManager {
     func resumeMediaIfNeeded() {
         guard SettingsManager.shared.pauseMediaDuringRecording else { return }
 
-        if didPauseMedia {
-            log("[Speechy] MediaControl: Resuming media playback...")
-            sendMediaPlayPauseKey()
+        if didPauseMedia, let player = pausedPlayer {
+            log("[Speechy] MediaControl: Resuming \(player)...")
+            resumePlayer(player)
             didPauseMedia = false
-            log("[Speechy] MediaControl: Media resumed")
+            pausedPlayer = nil
+            log("[Speechy] MediaControl: \(player) resumed")
         } else {
             log("[Speechy] MediaControl: We didn't pause media, not resuming")
         }
@@ -959,6 +976,7 @@ class MediaControlManager {
     /// Reset state (e.g., if recording is cancelled)
     func reset() {
         didPauseMedia = false
+        pausedPlayer = nil
     }
 }
 
