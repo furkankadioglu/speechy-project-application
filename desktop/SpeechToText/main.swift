@@ -54,12 +54,24 @@ struct TranscriptionEntry: Identifiable, Codable {
     let text: String
     let language: String
     let date: Date
+    var audioPath: String?
 
-    init(text: String, language: String) {
+    init(text: String, language: String, audioPath: String? = nil) {
         self.id = UUID()
         self.text = text
         self.language = language
         self.date = Date()
+        self.audioPath = audioPath
+    }
+
+    var audioURL: URL? {
+        guard let path = audioPath else { return nil }
+        return URL(fileURLWithPath: path)
+    }
+
+    var hasAudio: Bool {
+        guard let path = audioPath else { return false }
+        return FileManager.default.fileExists(atPath: path)
     }
 }
 
@@ -1137,6 +1149,7 @@ class SettingsManager: ObservableObject {
     @Published var waveExponent: Double
     @Published var waveDivisor: Double
     @Published var pauseMediaDuringRecording: Bool
+    @Published var saveAudioRecordings: Bool
 
     var onSettingsChanged: (() -> Void)?
     private var cancellables = Set<AnyCancellable>()
@@ -1210,6 +1223,9 @@ class SettingsManager: ObservableObject {
             _pauseMediaDuringRecording = Published(initialValue: defaults.bool(forKey: "pauseMediaDuringRecording"))
         }
 
+        // Default OFF — user must opt-in to save audio recordings
+        _saveAudioRecordings = Published(initialValue: defaults.bool(forKey: "saveAudioRecordings"))
+
         // Auto-save and notify on changes
         $slot1.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
@@ -1235,6 +1251,8 @@ class SettingsManager: ObservableObject {
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
         $pauseMediaDuringRecording.dropFirst()
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
+        $saveAudioRecordings.dropFirst()
+            .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
     }
 
     #if TESTING
@@ -1253,6 +1271,7 @@ class SettingsManager: ObservableObject {
         _waveExponent = Published(initialValue: 0.45)
         _waveDivisor = Published(initialValue: 1.0)
         _pauseMediaDuringRecording = Published(initialValue: true)
+        _saveAudioRecordings = Published(initialValue: false)
     }
     #endif
 
@@ -1270,23 +1289,67 @@ class SettingsManager: ObservableObject {
         defaults.set(waveExponent, forKey: "waveExponent")
         defaults.set(waveDivisor, forKey: "waveDivisor")
         defaults.set(pauseMediaDuringRecording, forKey: "pauseMediaDuringRecording")
+        defaults.set(saveAudioRecordings, forKey: "saveAudioRecordings")
     }
 
-    func addToHistory(_ text: String, language: String) {
+    /// Directory for saved audio recordings
+    var recordingsDirectory: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("Speechy/Recordings")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    func addToHistory(_ text: String, language: String, audioFileURL: URL? = nil) {
         // Don't add blank audio or very short texts
         if text.contains("[BLANK_AUDIO]") || text.count < 2 { return }
-        let entry = TranscriptionEntry(text: text, language: language)
+
+        var savedAudioPath: String? = nil
+
+        // Save audio file if feature is enabled and audio exists
+        if saveAudioRecordings, let sourceURL = audioFileURL, FileManager.default.fileExists(atPath: sourceURL.path) {
+            let fileName = "\(UUID().uuidString).wav"
+            let destURL = recordingsDirectory.appendingPathComponent(fileName)
+            do {
+                try FileManager.default.copyItem(at: sourceURL, to: destURL)
+                savedAudioPath = destURL.path
+                log("[Speechy] Audio saved: \(destURL.path)")
+            } catch {
+                log("[Speechy] Failed to save audio: \(error.localizedDescription)")
+            }
+        }
+
+        let entry = TranscriptionEntry(text: text, language: language, audioPath: savedAudioPath)
         history.insert(entry, at: 0)
-        if history.count > 50 { history = Array(history.prefix(50)) }
+        if history.count > 50 {
+            // Delete audio files of removed entries
+            let removed = Array(history.suffix(from: 50))
+            for old in removed {
+                if let path = old.audioPath {
+                    try? FileManager.default.removeItem(atPath: path)
+                }
+            }
+            history = Array(history.prefix(50))
+        }
         save()
     }
 
     func clearHistory() {
+        // Delete all associated audio files
+        for entry in history {
+            if let path = entry.audioPath {
+                try? FileManager.default.removeItem(atPath: path)
+            }
+        }
         history.removeAll()
         save()
     }
 
     func deleteEntry(_ entry: TranscriptionEntry) {
+        // Delete associated audio file
+        if let path = entry.audioPath {
+            try? FileManager.default.removeItem(atPath: path)
+        }
         history.removeAll { $0.id == entry.id }
         save()
     }
@@ -2066,6 +2129,30 @@ struct AdvancedTab: View {
                                 .labelsHidden()
                         }
                         .padding()
+
+                        Divider()
+
+                        HStack(alignment: .top, spacing: 14) {
+                            Image(systemName: "waveform.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(.cyan)
+                                .frame(width: 28)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Save Audio Recordings")
+                                    .font(.subheadline.weight(.medium))
+                                Text("Keep audio files of your recordings in History. Play them back or find them in Finder.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+
+                            Toggle("", isOn: $settings.saveAudioRecordings)
+                                .toggleStyle(SwitchToggleStyle(tint: .cyan))
+                                .labelsHidden()
+                        }
+                        .padding()
                     }
                     .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(12)
@@ -2284,6 +2371,8 @@ struct HistoryRow: View {
     let onDelete: () -> Void
     @State private var isHovering = false
     @State private var showCopied = false
+    @State private var isPlaying = false
+    @State private var audioPlayer: AVAudioPlayer?
 
     var flag: String {
         supportedLanguages.first { $0.code == entry.language }?.flag ?? "🌍"
@@ -2302,6 +2391,36 @@ struct HistoryRow: View {
 
                 // Action buttons
                 HStack(spacing: 4) {
+                    // Play audio button (only if audio exists)
+                    if entry.hasAudio {
+                        Button(action: togglePlayback) {
+                            Image(systemName: isPlaying ? "stop.fill" : "play.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(isPlaying ? .orange : .blue)
+                                .frame(width: 28, height: 28)
+                                .background(Color(NSColor.controlBackgroundColor))
+                                .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                        .help(isPlaying ? "Stop" : "Play Audio")
+
+                        // Open in Finder button
+                        Button(action: {
+                            if let url = entry.audioURL {
+                                NSWorkspace.shared.activateFileViewerSelecting([url])
+                            }
+                        }) {
+                            Image(systemName: "folder")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .frame(width: 28, height: 28)
+                                .background(Color(NSColor.controlBackgroundColor))
+                                .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Show in Finder")
+                    }
+
                     // Copy button
                     Button(action: {
                         NSPasteboard.general.clearContents()
@@ -2341,6 +2460,17 @@ struct HistoryRow: View {
                 .font(.body)
                 .lineLimit(3)
                 .foregroundColor(.primary)
+
+            // Audio file info
+            if entry.hasAudio {
+                HStack(spacing: 4) {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 9))
+                    Text("Audio saved")
+                        .font(.system(size: 10))
+                }
+                .foregroundColor(.blue.opacity(0.7))
+            }
         }
         .padding(12)
         .background(
@@ -2356,6 +2486,33 @@ struct HistoryRow: View {
             withAnimation(.easeInOut(duration: 0.15)) {
                 isHovering = hovering
             }
+        }
+        .onDisappear {
+            audioPlayer?.stop()
+            isPlaying = false
+        }
+    }
+
+    private func togglePlayback() {
+        if isPlaying {
+            audioPlayer?.stop()
+            isPlaying = false
+            return
+        }
+
+        guard let url = entry.audioURL else { return }
+        do {
+            audioPlayer = try AVAudioPlayer(contentsOf: url)
+            audioPlayer?.play()
+            isPlaying = true
+
+            // Auto-stop when done
+            let duration = audioPlayer?.duration ?? 0
+            DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.1) {
+                self.isPlaying = false
+            }
+        } catch {
+            log("[Speechy] Failed to play audio: \(error.localizedDescription)")
         }
     }
 }
@@ -3292,13 +3449,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.async {
                     self.overlayWindow.setState(.hidden)
                     if let text = result, !text.isEmpty {
-                        SettingsManager.shared.addToHistory(text, language: self.activeLanguage)
+                        // Pass audioURL so it can be saved if feature is enabled
+                        SettingsManager.shared.addToHistory(text, language: self.activeLanguage, audioFileURL: audioURL)
                         self.pasteText(text)
                     }
                     // Resume media after transcription is complete
                     MediaControlManager.shared.resumeMediaIfNeeded()
                 }
-                try? FileManager.default.removeItem(at: audioURL)
+                // Only delete temp audio if we're NOT saving recordings (it was already copied)
+                if !SettingsManager.shared.saveAudioRecordings {
+                    try? FileManager.default.removeItem(at: audioURL)
+                } else {
+                    // Always delete the temp file — we already copied it in addToHistory
+                    try? FileManager.default.removeItem(at: audioURL)
+                }
             }
         }
     }
