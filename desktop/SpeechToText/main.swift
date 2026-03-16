@@ -32,20 +32,116 @@ struct HotkeyConfig: Equatable, Codable {
     var language: String = "en"
     var isEnabled: Bool = true
     var mode: HotkeyMode = .pushToTalk
+    var keyCode: Int64 = -1  // -1 = modifier-only mode, >= 0 = specific key required
 
     var modifierFlags: CGEventFlags {
         get { CGEventFlags(rawValue: modifiers) }
         set { modifiers = newValue.rawValue }
     }
 
+    var isModifierOnly: Bool { keyCode == -1 }
+
     var displayName: String {
         var parts: [String] = []
         let flags = CGEventFlags(rawValue: modifiers)
-        if flags.contains(.maskShift) { parts.append("⇧") }
         if flags.contains(.maskControl) { parts.append("⌃") }
         if flags.contains(.maskAlternate) { parts.append("⌥") }
+        if flags.contains(.maskShift) { parts.append("⇧") }
         if flags.contains(.maskCommand) { parts.append("⌘") }
+        if keyCode >= 0 {
+            parts.append(HotkeyConfig.keyName(for: keyCode))
+        }
         return parts.isEmpty ? "None" : parts.joined()
+    }
+
+    /// Convert a virtual key code to a human-readable display string
+    static func keyName(for keyCode: Int64) -> String {
+        switch keyCode {
+        // Letters
+        case 0x00: return "A"
+        case 0x01: return "S"
+        case 0x02: return "D"
+        case 0x03: return "F"
+        case 0x04: return "H"
+        case 0x05: return "G"
+        case 0x06: return "Z"
+        case 0x07: return "X"
+        case 0x08: return "C"
+        case 0x09: return "V"
+        case 0x0B: return "B"
+        case 0x0C: return "Q"
+        case 0x0D: return "W"
+        case 0x0E: return "E"
+        case 0x0F: return "R"
+        case 0x10: return "Y"
+        case 0x11: return "T"
+        case 0x20: return "U"
+        case 0x22: return "I"
+        case 0x1F: return "O"  // Also ']' on US keyboard
+        case 0x23: return "P"
+        case 0x25: return "L"
+        case 0x26: return "J"
+        case 0x28: return "K"
+        case 0x2D: return "N"
+        case 0x2E: return "M"
+        // Numbers
+        case 0x12: return "1"
+        case 0x13: return "2"
+        case 0x14: return "3"
+        case 0x15: return "4"
+        case 0x17: return "5"
+        case 0x16: return "6"
+        case 0x1A: return "7"
+        case 0x1C: return "8"
+        case 0x19: return "9"
+        case 0x1D: return "0"
+        case 0x1E: return "]"
+        // Special keys
+        case 0x24: return "Return"
+        case 0x30: return "Tab"
+        case 0x31: return "Space"
+        case 0x33: return "Delete"
+        case 0x35: return "Esc"
+        case 0x75: return "Fwd Del"
+        case 0x72: return "Help"
+        case 0x73: return "Home"
+        case 0x77: return "End"
+        case 0x74: return "Page Up"
+        case 0x79: return "Page Down"
+        // Arrow keys
+        case 0x7B: return "Left"
+        case 0x7C: return "Right"
+        case 0x7D: return "Down"
+        case 0x7E: return "Up"
+        // F-keys
+        case 0x7A: return "F1"
+        case 0x78: return "F2"
+        case 0x63: return "F3"
+        case 0x76: return "F4"
+        case 0x60: return "F5"
+        case 0x61: return "F6"
+        case 0x62: return "F7"
+        case 0x64: return "F8"
+        case 0x65: return "F9"
+        case 0x6D: return "F10"
+        case 0x67: return "F11"
+        case 0x6F: return "F12"
+        case 0x69: return "F13"
+        case 0x6B: return "F14"
+        case 0x71: return "F15"
+        // Punctuation / other
+        case 0x18: return "="
+        case 0x1B: return "-"
+        case 0x21: return "["
+        case 0x27: return "'"
+        case 0x29: return ";"
+        case 0x2A: return "\\"
+        case 0x2B: return ","
+        case 0x2C: return "/"
+        case 0x2F: return "."
+        case 0x32: return "`"
+        default: return "Key\(keyCode)"
+        }
     }
 }
 
@@ -2506,6 +2602,7 @@ struct SlotConfigView: View {
     let title: String
     @Binding var config: HotkeyConfig
     let accentColor: Color
+    @State private var isRecordingKey = false
 
     var currentFlag: String {
         supportedLanguages.first { $0.code == config.language }?.flag ?? "🌍"
@@ -2563,6 +2660,84 @@ struct SlotConfigView: View {
             .opacity(config.isEnabled ? 1 : 0.4)
             .disabled(!config.isEnabled)
 
+            // Shortcut Key section
+            HStack(spacing: 10) {
+                Image(systemName: "command.square")
+                    .foregroundColor(.secondary)
+                    .font(.subheadline)
+
+                Text("Shortcut Key")
+                    .font(.subheadline)
+
+                Spacer()
+
+                if config.keyCode >= 0 {
+                    // Show current key name and clear button
+                    HStack(spacing: 6) {
+                        Text(HotkeyConfig.keyName(for: config.keyCode))
+                            .font(.system(.subheadline, design: .monospaced).weight(.semibold))
+                            .foregroundColor(accentColor)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(accentColor.opacity(0.12))
+                            .cornerRadius(6)
+
+                        Button(action: {
+                            config.keyCode = -1
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.secondary.opacity(0.7))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Clear key (revert to modifier-only)")
+                    }
+                } else {
+                    // Show "Modifier only" or recording state
+                    if isRecordingKey {
+                        Text("Press any key...")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.orange.opacity(0.12))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.orange.opacity(0.4), lineWidth: 1)
+                            )
+                    } else {
+                        Text("Modifier only")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Button(action: {
+                    isRecordingKey.toggle()
+                }) {
+                    Text(isRecordingKey ? "Cancel" : "Set Key")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(isRecordingKey ? .red : .white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(isRecordingKey ? Color.red.opacity(0.15) : accentColor)
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.windowBackgroundColor))
+            .cornerRadius(8)
+            .opacity(config.isEnabled ? 1 : 0.4)
+            .disabled(!config.isEnabled)
+            .background(
+                // Invisible key capture view
+                ShortcutKeyRecorder(isRecording: $isRecordingKey, keyCode: $config.keyCode)
+                    .frame(width: 0, height: 0)
+            )
+
             // Language picker
             HStack(spacing: 10) {
                 Image(systemName: "globe")
@@ -2590,6 +2765,50 @@ struct SlotConfigView: View {
                 .stroke(accentColor.opacity(config.isEnabled ? 0.2 : 0.1), lineWidth: 1)
         )
         .animation(.easeInOut(duration: 0.15), value: config.isEnabled)
+    }
+}
+
+/// NSViewRepresentable that captures key presses when isRecording is true
+struct ShortcutKeyRecorder: NSViewRepresentable {
+    @Binding var isRecording: Bool
+    @Binding var keyCode: Int64
+
+    func makeNSView(context: Context) -> ShortcutKeyRecorderView {
+        let view = ShortcutKeyRecorderView()
+        view.onKeyDown = { code in
+            // Ignore modifier-only keys (they have no useful keyCode for our purpose)
+            // Shift=56/60, Control=59/62, Option=58/61, Command=55/54
+            let modifierKeyCodes: Set<Int64> = [54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+            if modifierKeyCodes.contains(code) { return }
+            self.keyCode = code
+            self.isRecording = false
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: ShortcutKeyRecorderView, context: Context) {
+        if isRecording {
+            DispatchQueue.main.async {
+                nsView.window?.makeFirstResponder(nsView)
+            }
+        }
+        nsView.isActive = isRecording
+    }
+}
+
+/// NSView subclass that listens for keyDown events to capture shortcut keys
+class ShortcutKeyRecorderView: NSView {
+    var isActive = false
+    var onKeyDown: ((Int64) -> Void)?
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        if isActive {
+            onKeyDown?(Int64(event.keyCode))
+        } else {
+            super.keyDown(with: event)
+        }
     }
 }
 
@@ -3520,7 +3739,7 @@ class HotkeyManager {
         stopListening()
         log("[Speechy] Attempting to start hotkey listener...")
 
-        let eventMask = (1 << CGEventType.flagsChanged.rawValue) | (1 << CGEventType.keyDown.rawValue)
+        let eventMask = (1 << CGEventType.flagsChanged.rawValue) | (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
 
         let callback: CGEventTapCallBack = { _, type, event, refcon in
             let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon!).takeUnretainedValue()
@@ -3557,9 +3776,13 @@ class HotkeyManager {
             return Unmanaged.passUnretained(event)
         }
 
-        // Escape key (keyCode 53) stops toggle recording
+        let flags = event.flags
+
+        // === keyDown handling ===
         if type == .keyDown {
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+
+            // Escape key (keyCode 53) stops toggle recording
             if keyCode == 53 && isRecording && isToggleMode {
                 log("[Speechy] Escape pressed, stopping toggle recording")
                 isRecording = false
@@ -3568,16 +3791,100 @@ class HotkeyManager {
                 DispatchQueue.main.async { self.onRecordingStop?() }
                 return nil // consume the Escape key
             }
+
+            // Check key+modifier configs on keyDown
+            let configs: [(config: HotkeyConfig, slot: Int)] = [
+                (slot1Config, 1), (slot2Config, 2), (slot3Config, 3), (slot4Config, 4)
+            ]
+
+            for (cfg, slot) in configs {
+                guard cfg.isEnabled && !cfg.isModifierOnly && cfg.keyCode == keyCode else { continue }
+                guard matchesModifiers(flags: flags, config: cfg) else { continue }
+
+                // Toggle mode: second keyDown of the same combo stops recording
+                if isRecording && isToggleMode && activeSlot == slot {
+                    if !toggleStopIgnoreRelease {
+                        log("[Speechy] Toggle key re-pressed, stopping toggle recording (slot \(slot))")
+                        toggleStopIgnoreRelease = true
+                        isRecording = false
+                        isToggleMode = false
+                        activeSlot = nil
+                        DispatchQueue.main.async { self.onRecordingStop?() }
+                        return nil // consume
+                    }
+                    return nil // consume repeated keyDown while ignoring
+                }
+
+                // Start recording if not already active
+                if activeSlot == nil && !isRecording {
+                    activeSlot = slot
+                    isToggleMode = (cfg.mode == .toggleToTalk)
+                    if isToggleMode { toggleStopIgnoreRelease = true }
+                    startDelayTimer(language: cfg.language, flag: getFlag(for: cfg.language))
+                    return nil // consume the trigger key
+                }
+
+                return nil // consume even if already active
+            }
+
             return Unmanaged.passUnretained(event)
         }
 
-        // flagsChanged handling
-        let flags = event.flags
+        // === keyUp handling ===
+        if type == .keyUp {
+            let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
 
-        let slot1Match = slot1Config.isEnabled && matchesConfig(flags: flags, config: slot1Config)
-        let slot2Match = slot2Config.isEnabled && matchesConfig(flags: flags, config: slot2Config)
-        let slot3Match = slot3Config.isEnabled && matchesConfig(flags: flags, config: slot3Config)
-        let slot4Match = slot4Config.isEnabled && matchesConfig(flags: flags, config: slot4Config)
+            // Only handle keyUp for key+modifier push-to-talk configs
+            if let slot = activeSlot, !isToggleMode {
+                let activeConfig: HotkeyConfig
+                switch slot {
+                case 1: activeConfig = slot1Config
+                case 2: activeConfig = slot2Config
+                case 3: activeConfig = slot3Config
+                case 4: activeConfig = slot4Config
+                default: activeConfig = slot1Config
+                }
+
+                if !activeConfig.isModifierOnly && activeConfig.keyCode == keyCode {
+                    if isRecording {
+                        isRecording = false
+                        activeSlot = nil
+                        DispatchQueue.main.async { self.onRecordingStop?() }
+                    } else {
+                        delayTimer?.invalidate()
+                        delayTimer = nil
+                        activeSlot = nil
+                    }
+                    return nil // consume the trigger key release
+                }
+            }
+
+            // Toggle mode: reset the ignore flag on keyUp so next keyDown can stop
+            if isRecording && isToggleMode {
+                if let slot = activeSlot {
+                    let activeConfig: HotkeyConfig
+                    switch slot {
+                    case 3: activeConfig = slot3Config
+                    case 4: activeConfig = slot4Config
+                    default: activeConfig = slot3Config
+                    }
+                    if !activeConfig.isModifierOnly && activeConfig.keyCode == keyCode {
+                        toggleStopIgnoreRelease = false
+                        return nil // consume
+                    }
+                }
+            }
+
+            return Unmanaged.passUnretained(event)
+        }
+
+        // === flagsChanged handling (modifier-only configs) ===
+
+        // Only process modifier-only configs in flagsChanged
+        let slot1Match = slot1Config.isEnabled && slot1Config.isModifierOnly && matchesModifiers(flags: flags, config: slot1Config)
+        let slot2Match = slot2Config.isEnabled && slot2Config.isModifierOnly && matchesModifiers(flags: flags, config: slot2Config)
+        let slot3Match = slot3Config.isEnabled && slot3Config.isModifierOnly && matchesModifiers(flags: flags, config: slot3Config)
+        let slot4Match = slot4Config.isEnabled && slot4Config.isModifierOnly && matchesModifiers(flags: flags, config: slot4Config)
 
         // Toggle mode: if recording, pressing the same modifier again stops it
         if isRecording && isToggleMode {
@@ -3587,17 +3894,19 @@ class HotkeyManager {
             case 4: activeConfig = slot4Config
             default: activeConfig = slot3Config
             }
-            if matchesConfig(flags: flags, config: activeConfig) && !toggleStopIgnoreRelease {
-                log("[Speechy] Toggle modifier re-pressed, stopping toggle recording")
-                toggleStopIgnoreRelease = true
-                isRecording = false
-                isToggleMode = false
-                activeSlot = nil
-                DispatchQueue.main.async { self.onRecordingStop?() }
-                return Unmanaged.passUnretained(event)
-            }
-            if !matchesConfig(flags: flags, config: activeConfig) {
-                toggleStopIgnoreRelease = false
+            if activeConfig.isModifierOnly {
+                if matchesModifiers(flags: flags, config: activeConfig) && !toggleStopIgnoreRelease {
+                    log("[Speechy] Toggle modifier re-pressed, stopping toggle recording")
+                    toggleStopIgnoreRelease = true
+                    isRecording = false
+                    isToggleMode = false
+                    activeSlot = nil
+                    DispatchQueue.main.async { self.onRecordingStop?() }
+                    return Unmanaged.passUnretained(event)
+                }
+                if !matchesModifiers(flags: flags, config: activeConfig) {
+                    toggleStopIgnoreRelease = false
+                }
             }
             return Unmanaged.passUnretained(event)
         }
@@ -3624,14 +3933,14 @@ class HotkeyManager {
                 startDelayTimer(language: slot4Config.language, flag: getFlag(for: slot4Config.language))
             }
         } else if activeSlot != nil && !isToggleMode {
-            // Push-to-talk: stop on modifier release
+            // Push-to-talk (modifier-only): stop on modifier release
             let activeConfig: HotkeyConfig
             switch activeSlot {
             case 1: activeConfig = slot1Config
             case 2: activeConfig = slot2Config
             default: activeConfig = slot1Config
             }
-            if !matchesConfig(flags: flags, config: activeConfig) {
+            if activeConfig.isModifierOnly && !matchesModifiers(flags: flags, config: activeConfig) {
                 if isRecording {
                     isRecording = false
                     activeSlot = nil
@@ -3649,9 +3958,11 @@ class HotkeyManager {
         return Unmanaged.passUnretained(event)
     }
 
-    func matchesConfig(flags: CGEventFlags, config: HotkeyConfig) -> Bool {
+    /// Check if the current modifier flags match the config's required modifiers.
+    /// For modifier-only configs this checks exact match; for key+modifier configs this just checks modifiers are held.
+    func matchesModifiers(flags: CGEventFlags, config: HotkeyConfig) -> Bool {
         let required = config.modifierFlags
-        if required.rawValue == 0 { return false }
+        if required.rawValue == 0 && config.isModifierOnly { return false }
 
         if required.contains(.maskControl) && !flags.contains(.maskControl) { return false }
         if required.contains(.maskAlternate) && !flags.contains(.maskAlternate) { return false }
