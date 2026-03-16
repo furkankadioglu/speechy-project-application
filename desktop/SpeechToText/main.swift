@@ -1300,26 +1300,11 @@ class SettingsManager: ObservableObject {
         return dir
     }
 
-    func addToHistory(_ text: String, language: String, audioFileURL: URL? = nil) {
+    func addToHistory(_ text: String, language: String, audioPath: String? = nil) {
         // Don't add blank audio or very short texts
         if text.contains("[BLANK_AUDIO]") || text.count < 2 { return }
 
-        var savedAudioPath: String? = nil
-
-        // Save audio file if feature is enabled and audio exists
-        if saveAudioRecordings, let sourceURL = audioFileURL, FileManager.default.fileExists(atPath: sourceURL.path) {
-            let fileName = "\(UUID().uuidString).wav"
-            let destURL = recordingsDirectory.appendingPathComponent(fileName)
-            do {
-                try FileManager.default.copyItem(at: sourceURL, to: destURL)
-                savedAudioPath = destURL.path
-                log("[Speechy] Audio saved: \(destURL.path)")
-            } catch {
-                log("[Speechy] Failed to save audio: \(error.localizedDescription)")
-            }
-        }
-
-        let entry = TranscriptionEntry(text: text, language: language, audioPath: savedAudioPath)
+        let entry = TranscriptionEntry(text: text, language: language, audioPath: audioPath)
         history.insert(entry, at: 0)
         if history.count > 50 {
             // Delete audio files of removed entries
@@ -3448,24 +3433,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
 
+            // If saving audio is enabled, copy the file BEFORE whisper processes it
+            // because the temp file may be deleted during/after transcription
+            var savedAudioURL: URL? = nil
+            if SettingsManager.shared.saveAudioRecordings {
+                let dir = SettingsManager.shared.recordingsDirectory
+                let fileName = "\(UUID().uuidString).wav"
+                let destURL = dir.appendingPathComponent(fileName)
+                do {
+                    try FileManager.default.copyItem(at: audioURL, to: destURL)
+                    savedAudioURL = destURL
+                    log("[Speechy] Audio pre-saved: \(destURL.path)")
+                } catch {
+                    log("[Speechy] Failed to pre-save audio: \(error.localizedDescription)")
+                }
+            }
+
             self.whisperTranscriber.transcribe(audioURL: audioURL, language: self.activeLanguage) { result in
                 DispatchQueue.main.async {
                     self.overlayWindow.setState(.hidden)
                     if let text = result, !text.isEmpty {
-                        // Pass audioURL so it can be saved if feature is enabled
-                        SettingsManager.shared.addToHistory(text, language: self.activeLanguage, audioFileURL: audioURL)
+                        SettingsManager.shared.addToHistory(text, language: self.activeLanguage, audioPath: savedAudioURL?.path)
                         self.pasteText(text)
+                    } else if let url = savedAudioURL {
+                        // Transcription failed/empty — clean up the saved audio
+                        try? FileManager.default.removeItem(at: url)
                     }
                     // Resume media after transcription is complete
                     MediaControlManager.shared.resumeMediaIfNeeded()
                 }
-                // Only delete temp audio if we're NOT saving recordings (it was already copied)
-                if !SettingsManager.shared.saveAudioRecordings {
-                    try? FileManager.default.removeItem(at: audioURL)
-                } else {
-                    // Always delete the temp file — we already copied it in addToHistory
-                    try? FileManager.default.removeItem(at: audioURL)
-                }
+                try? FileManager.default.removeItem(at: audioURL)
             }
         }
     }
