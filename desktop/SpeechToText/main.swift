@@ -2720,26 +2720,6 @@ struct SlotConfigView: View {
                 }
             }
 
-            // Editable name field
-            HStack(spacing: 10) {
-                Image(systemName: "tag")
-                    .foregroundColor(.secondary)
-                    .font(.subheadline)
-                Text("Name")
-                    .font(.subheadline)
-                Spacer()
-                TextField("e.g. English, Meeting...", text: $config.name)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 13))
-                    .frame(maxWidth: 200)
-                    .disabled(!config.isEnabled)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color(NSColor.windowBackgroundColor))
-            .cornerRadius(8)
-            .opacity(config.isEnabled ? 1 : 0.4)
-
             // Mode selector (Push-to-Talk / Toggle)
             HStack(spacing: 10) {
                 Image(systemName: "hand.tap")
@@ -3832,6 +3812,7 @@ class HotkeyManager {
     private var isRecording = false
     private var isToggleMode = false
     private var toggleStopIgnoreRelease = false
+    private var cooldownUntil: Date = .distantPast
 
     func updateConfigs() {
         let settings = SettingsManager.shared
@@ -3889,6 +3870,11 @@ class HotkeyManager {
 
         let flags = event.flags
 
+        // Cooldown check — ignore all trigger events briefly after stopping
+        if Date() < cooldownUntil && !isRecording {
+            return Unmanaged.passUnretained(event)
+        }
+
         // === keyDown handling ===
         if type == .keyDown {
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
@@ -3897,10 +3883,7 @@ class HotkeyManager {
             if keyCode == 53 && isRecording && isToggleMode {
                 if let activeID = activeSlotID, let activeConfig = configForID(activeID), activeConfig.escCancels {
                     log("[Speechy] Escape pressed, stopping toggle recording")
-                    isRecording = false
-                    isToggleMode = false
-                    activeSlotID = nil
-                    DispatchQueue.main.async { self.onRecordingStop?() }
+                    stopCurrentRecording()
                     return nil // consume the Escape key
                 }
                 // If escCancels is false, pass through the Escape key
@@ -3916,10 +3899,7 @@ class HotkeyManager {
                     if !toggleStopIgnoreRelease {
                         log("[Speechy] Toggle key re-pressed, stopping toggle recording (\(cfg.name))")
                         toggleStopIgnoreRelease = true
-                        isRecording = false
-                        isToggleMode = false
-                        activeSlotID = nil
-                        DispatchQueue.main.async { self.onRecordingStop?() }
+                        stopCurrentRecording()
                         return nil // consume
                     }
                     return nil // consume repeated keyDown while ignoring
@@ -3948,9 +3928,7 @@ class HotkeyManager {
             if let activeID = activeSlotID, !isToggleMode, let activeConfig = configForID(activeID) {
                 if !activeConfig.isModifierOnly && activeConfig.keyCode == keyCode {
                     if isRecording {
-                        isRecording = false
-                        activeSlotID = nil
-                        DispatchQueue.main.async { self.onRecordingStop?() }
+                        stopCurrentRecording()
                     } else {
                         delayTimer?.invalidate()
                         delayTimer = nil
@@ -3982,10 +3960,7 @@ class HotkeyManager {
                     if matchesModifiers(flags: flags, config: activeConfig) && !toggleStopIgnoreRelease {
                         log("[Speechy] Toggle modifier re-pressed, stopping toggle recording")
                         toggleStopIgnoreRelease = true
-                        isRecording = false
-                        isToggleMode = false
-                        activeSlotID = nil
-                        DispatchQueue.main.async { self.onRecordingStop?() }
+                        stopCurrentRecording()
                         return Unmanaged.passUnretained(event)
                     }
                     if !matchesModifiers(flags: flags, config: activeConfig) {
@@ -4011,9 +3986,7 @@ class HotkeyManager {
             if let activeID = activeSlotID, let activeConfig = configForID(activeID) {
                 if activeConfig.isModifierOnly && !matchesModifiers(flags: flags, config: activeConfig) {
                     if isRecording {
-                        isRecording = false
-                        activeSlotID = nil
-                        DispatchQueue.main.async { self.onRecordingStop?() }
+                        stopCurrentRecording()
                     } else {
                         delayTimer?.invalidate()
                         delayTimer = nil
@@ -4055,6 +4028,15 @@ class HotkeyManager {
                 self.onRecordingStart?(language, flag)
             }
         }
+    }
+
+    /// Centralized stop — sets cooldown to prevent immediate re-trigger
+    private func stopCurrentRecording() {
+        isRecording = false
+        isToggleMode = false
+        activeSlotID = nil
+        cooldownUntil = Date().addingTimeInterval(0.5)
+        DispatchQueue.main.async { self.onRecordingStop?() }
     }
 
     func getFlag(for language: String) -> String {
