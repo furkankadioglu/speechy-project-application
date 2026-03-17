@@ -1247,6 +1247,9 @@ class SettingsManager: ObservableObject {
     @Published var pauseMediaDuringRecording: Bool
     @Published var saveAudioRecordings: Bool
 
+    /// When true, hotkey triggers are suppressed (user is recording a new shortcut in settings)
+    var isCapturingShortcut = false
+
     var onSettingsChanged: (() -> Void)?
     private var cancellables = Set<AnyCancellable>()
 
@@ -2804,6 +2807,7 @@ struct SlotConfigView: View {
 
                 Button(action: {
                     isRecordingKey.toggle()
+                    SettingsManager.shared.isCapturingShortcut = isRecordingKey
                 }) {
                     Text(isRecordingKey ? "Cancel" : "Record")
                         .font(.caption.weight(.medium))
@@ -2883,6 +2887,7 @@ struct ShortcutCombinationRecorder: NSViewRepresentable {
             self.config.modifiers = modifiers
             self.config.keyCode = keyCode
             self.isRecording = false
+            SettingsManager.shared.isCapturingShortcut = false
         }
         return view
     }
@@ -3869,6 +3874,11 @@ class HotkeyManager {
         }
 
         let flags = event.flags
+
+        // Suppress hotkeys while user is recording a new shortcut in settings
+        if SettingsManager.shared.isCapturingShortcut {
+            return Unmanaged.passUnretained(event)
+        }
 
         // Cooldown check — ignore all trigger events briefly after stopping
         if Date() < cooldownUntil && !isRecording {
