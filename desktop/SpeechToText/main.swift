@@ -2782,39 +2782,40 @@ class ShortcutCombinationRecorderView: NSView {
     /// Called with (modifierFlags rawValue, keyCode). keyCode = -1 for modifier-only.
     var onShortcutCaptured: ((UInt64, Int64) -> Void)?
 
-    private let modifierKeyCodes: Set<UInt16> = [54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
-    private var heldModifiers: UInt64 = 0
+    /// Accumulated modifiers — only grows while recording, never shrinks
+    private var accumulatedModifiers: UInt64 = 0
+    private var allModifiersReleased = false
     private var modifierReleaseTimer: Timer?
 
     override var acceptsFirstResponder: Bool { true }
 
     override func keyDown(with event: NSEvent) {
         guard isActive else { super.keyDown(with: event); return }
-        // A real key was pressed — capture modifiers + key
         modifierReleaseTimer?.invalidate()
         modifierReleaseTimer = nil
-        let mods = event.modifierFlags.intersection([.shift, .control, .option, .command])
-        let rawMods = modsToGCEventFlags(mods)
-        onShortcutCaptured?(rawMods, Int64(event.keyCode))
+        // Use accumulated modifiers (not just current) + this key
+        let currentMods = modsToGCEventFlags(event.modifierFlags.intersection([.shift, .control, .option, .command]))
+        accumulatedModifiers |= currentMods
+        let finalMods = accumulatedModifiers
+        accumulatedModifiers = 0
+        onShortcutCaptured?(finalMods, Int64(event.keyCode))
     }
 
     override func flagsChanged(with event: NSEvent) {
         guard isActive else { super.flagsChanged(with: event); return }
-        let mods = event.modifierFlags.intersection([.shift, .control, .option, .command])
-        let rawMods = modsToGCEventFlags(mods)
+        let currentMods = modsToGCEventFlags(event.modifierFlags.intersection([.shift, .control, .option, .command]))
 
-        if rawMods != 0 {
-            // Modifiers are being held — remember them
-            heldModifiers = rawMods
+        if currentMods != 0 {
+            // Modifier pressed — accumulate (OR), never remove
+            accumulatedModifiers |= currentMods
             modifierReleaseTimer?.invalidate()
             modifierReleaseTimer = nil
-        } else if heldModifiers != 0 {
-            // All modifiers released — wait briefly to see if a key follows
-            // If no key comes, save as modifier-only shortcut
-            let captured = heldModifiers
+        } else if accumulatedModifiers != 0 {
+            // ALL modifiers released — save the accumulated combination
+            let captured = accumulatedModifiers
             modifierReleaseTimer?.invalidate()
             modifierReleaseTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
-                self?.heldModifiers = 0
+                self?.accumulatedModifiers = 0
                 self?.onShortcutCaptured?(captured, -1)
             }
         }
