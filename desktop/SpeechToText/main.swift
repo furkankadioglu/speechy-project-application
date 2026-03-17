@@ -27,12 +27,15 @@ enum HotkeyMode: String, Codable {
     case toggleToTalk
 }
 
-struct HotkeyConfig: Equatable, Codable {
+struct HotkeyConfig: Equatable, Codable, Identifiable {
+    var id: UUID = UUID()
+    var name: String = ""
     var modifiers: UInt64 = CGEventFlags.maskAlternate.rawValue
     var language: String = "en"
     var isEnabled: Bool = true
     var mode: HotkeyMode = .pushToTalk
     var keyCode: Int64 = -1  // -1 = modifier-only mode, >= 0 = specific key required
+    var escCancels: Bool = true  // Whether ESC stops this slot's toggle recording
 
     var modifierFlags: CGEventFlags {
         get { CGEventFlags(rawValue: modifiers) }
@@ -1227,10 +1230,7 @@ let supportedLanguages: [(code: String, name: String, flag: String)] = [
 class SettingsManager: ObservableObject {
     static let shared = SettingsManager()
 
-    @Published var slot1: HotkeyConfig
-    @Published var slot2: HotkeyConfig
-    @Published var slot3: HotkeyConfig
-    @Published var slot4: HotkeyConfig
+    @Published var slots: [HotkeyConfig]
     @Published var activationDelay: Double
     @Published var selectedModel: ModelType
     @Published var history: [TranscriptionEntry]
@@ -1250,33 +1250,62 @@ class SettingsManager: ObservableObject {
     var onSettingsChanged: (() -> Void)?
     private var cancellables = Set<AnyCancellable>()
 
+    /// Default slots for new installs
+    static func defaultSlots() -> [HotkeyConfig] {
+        return [
+            HotkeyConfig(name: "English", modifiers: CGEventFlags.maskAlternate.rawValue, language: "en", isEnabled: true, mode: .pushToTalk),
+            HotkeyConfig(name: "Turkish Toggle", modifiers: CGEventFlags.maskControl.rawValue, language: "tr", isEnabled: true, mode: .toggleToTalk),
+        ]
+    }
+
+    /// Migrate old slot1/2/3/4 data from UserDefaults to new array format
+    private static func migrateOldSlots(defaults: UserDefaults) -> [HotkeyConfig]? {
+        // Check if any old slot keys exist
+        let hasOldSlots = defaults.data(forKey: "slot1") != nil ||
+                          defaults.data(forKey: "slot2") != nil ||
+                          defaults.data(forKey: "slot3") != nil ||
+                          defaults.data(forKey: "slot4") != nil
+
+        guard hasOldSlots else { return nil }
+
+        var migrated: [HotkeyConfig] = []
+
+        let oldKeys = ["slot1", "slot2", "slot3", "slot4"]
+        let defaultNames = ["Hotkey 1", "Hotkey 2", "Toggle 1", "Toggle 2"]
+
+        for (i, key) in oldKeys.enumerated() {
+            if let data = defaults.data(forKey: key),
+               var config = try? JSONDecoder().decode(HotkeyConfig.self, from: data) {
+                // Ensure migrated configs have a valid UUID and name
+                if config.name.isEmpty {
+                    config.name = defaultNames[i]
+                }
+                migrated.append(config)
+            }
+        }
+
+        // Clean up old keys after migration
+        for key in oldKeys {
+            defaults.removeObject(forKey: key)
+        }
+
+        log("[Speechy] Migrated \(migrated.count) old slots to new array format")
+        return migrated.isEmpty ? nil : migrated
+    }
+
     init() {
         // Load saved settings
         let defaults = UserDefaults.standard
 
-        // Initialize all stored properties first
-        if let data = defaults.data(forKey: "slot1"), let config = try? JSONDecoder().decode(HotkeyConfig.self, from: data) {
-            _slot1 = Published(initialValue: config)
+        // Load slots: try new format first, then migrate, then defaults
+        if let data = defaults.data(forKey: "hotkeySlots"),
+           let loadedSlots = try? JSONDecoder().decode([HotkeyConfig].self, from: data),
+           !loadedSlots.isEmpty {
+            _slots = Published(initialValue: loadedSlots)
+        } else if let migratedSlots = SettingsManager.migrateOldSlots(defaults: defaults) {
+            _slots = Published(initialValue: migratedSlots)
         } else {
-            _slot1 = Published(initialValue: HotkeyConfig(modifiers: CGEventFlags.maskAlternate.rawValue, language: "en"))
-        }
-
-        if let data = defaults.data(forKey: "slot2"), let config = try? JSONDecoder().decode(HotkeyConfig.self, from: data) {
-            _slot2 = Published(initialValue: config)
-        } else {
-            _slot2 = Published(initialValue: HotkeyConfig(modifiers: CGEventFlags.maskShift.rawValue, language: "tr"))
-        }
-
-        if let data = defaults.data(forKey: "slot3"), let config = try? JSONDecoder().decode(HotkeyConfig.self, from: data) {
-            _slot3 = Published(initialValue: config)
-        } else {
-            _slot3 = Published(initialValue: HotkeyConfig(modifiers: CGEventFlags.maskControl.rawValue, language: "en", isEnabled: true, mode: .toggleToTalk))
-        }
-
-        if let data = defaults.data(forKey: "slot4"), let config = try? JSONDecoder().decode(HotkeyConfig.self, from: data) {
-            _slot4 = Published(initialValue: config)
-        } else {
-            _slot4 = Published(initialValue: HotkeyConfig(modifiers: CGEventFlags.maskControl.rawValue | CGEventFlags.maskShift.rawValue, language: "tr", isEnabled: true, mode: .toggleToTalk))
+            _slots = Published(initialValue: SettingsManager.defaultSlots())
         }
 
         let delay = defaults.double(forKey: "activationDelay")
@@ -1323,13 +1352,7 @@ class SettingsManager: ObservableObject {
         _saveAudioRecordings = Published(initialValue: defaults.bool(forKey: "saveAudioRecordings"))
 
         // Auto-save and notify on changes
-        $slot1.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
-        $slot2.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
-        $slot3.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
-        $slot4.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
+        $slots.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
         $activationDelay.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
@@ -1353,10 +1376,7 @@ class SettingsManager: ObservableObject {
 
     #if TESTING
     init(forTesting: Bool) {
-        _slot1 = Published(initialValue: HotkeyConfig(modifiers: CGEventFlags.maskAlternate.rawValue, language: "en"))
-        _slot2 = Published(initialValue: HotkeyConfig(modifiers: CGEventFlags.maskShift.rawValue, language: "tr"))
-        _slot3 = Published(initialValue: HotkeyConfig(modifiers: CGEventFlags.maskControl.rawValue, language: "en", isEnabled: true, mode: .toggleToTalk))
-        _slot4 = Published(initialValue: HotkeyConfig(modifiers: CGEventFlags.maskControl.rawValue | CGEventFlags.maskShift.rawValue, language: "tr", isEnabled: true, mode: .toggleToTalk))
+        _slots = Published(initialValue: SettingsManager.defaultSlots())
         _activationDelay = Published(initialValue: 0.15)
         _selectedModel = Published(initialValue: .fast)
         _history = Published(initialValue: [])
@@ -1371,12 +1391,27 @@ class SettingsManager: ObservableObject {
     }
     #endif
 
+    /// Add a new empty slot with defaults
+    func addSlot() {
+        let newSlot = HotkeyConfig(
+            name: "Hotkey \(slots.count + 1)",
+            modifiers: 0,
+            language: "en",
+            isEnabled: false,
+            mode: .pushToTalk
+        )
+        slots.append(newSlot)
+    }
+
+    /// Remove a slot by ID (minimum 1 slot)
+    func removeSlot(id: UUID) {
+        guard slots.count > 1 else { return }
+        slots.removeAll { $0.id == id }
+    }
+
     private func save() {
         let defaults = UserDefaults.standard
-        if let data = try? JSONEncoder().encode(slot1) { defaults.set(data, forKey: "slot1") }
-        if let data = try? JSONEncoder().encode(slot2) { defaults.set(data, forKey: "slot2") }
-        if let data = try? JSONEncoder().encode(slot3) { defaults.set(data, forKey: "slot3") }
-        if let data = try? JSONEncoder().encode(slot4) { defaults.set(data, forKey: "slot4") }
+        if let data = try? JSONEncoder().encode(slots) { defaults.set(data, forKey: "hotkeySlots") }
         defaults.set(activationDelay, forKey: "activationDelay")
         defaults.set(selectedModel.rawValue, forKey: "selectedModel")
         defaults.set(selectedInputDeviceUID, forKey: "selectedInputDeviceUID")
@@ -1928,37 +1963,56 @@ struct SettingsView: View {
 struct SettingsTab: View {
     @ObservedObject var settings: SettingsManager
 
+    private let accentColors: [Color] = [.blue, .green, .orange, .purple, .red, .cyan, .pink, .yellow, .mint, .teal, .indigo, .brown]
+
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
                 // Section: Hotkeys
                 VStack(alignment: .leading, spacing: 12) {
-                    SectionHeader(icon: "keyboard", title: "Hotkeys", color: .blue)
+                    HStack {
+                        SectionHeader(icon: "keyboard", title: "Hotkeys", color: .blue)
+                        Spacer()
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                settings.addSlot()
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 14, weight: .medium))
+                                Text("Add Hotkey")
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [Color.blue, Color.purple]),
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                    }
 
-                    SlotConfigView(title: "Hotkey 1", config: Binding(
-                        get: { settings.slot1 },
-                        set: { settings.slot1 = $0 }
-                    ), accentColor: .blue)
-
-                    SlotConfigView(title: "Hotkey 2", config: Binding(
-                        get: { settings.slot2 },
-                        set: { settings.slot2 = $0 }
-                    ), accentColor: .green)
-                }
-
-                // Section: Toggle Hotkeys
-                VStack(alignment: .leading, spacing: 12) {
-                    SectionHeader(icon: "keyboard.badge.ellipsis", title: "Toggle Hotkeys (press again to stop)", color: .orange)
-
-                    SlotConfigView(title: "Toggle 1", config: Binding(
-                        get: { settings.slot3 },
-                        set: { settings.slot3 = $0 }
-                    ), accentColor: .orange)
-
-                    SlotConfigView(title: "Toggle 2", config: Binding(
-                        get: { settings.slot4 },
-                        set: { settings.slot4 = $0 }
-                    ), accentColor: .red)
+                    ForEach(Array(settings.slots.enumerated()), id: \.element.id) { index, slot in
+                        let color = accentColors[index % accentColors.count]
+                        SlotConfigView(
+                            title: "Hotkey \(index + 1)",
+                            config: $settings.slots[index],
+                            accentColor: color,
+                            canDelete: settings.slots.count > 1,
+                            onDelete: {
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    settings.removeSlot(id: slot.id)
+                                }
+                            }
+                        )
+                    }
                 }
             }
             .padding()
@@ -2602,6 +2656,8 @@ struct SlotConfigView: View {
     let title: String
     @Binding var config: HotkeyConfig
     let accentColor: Color
+    var canDelete: Bool = false
+    var onDelete: (() -> Void)? = nil
     @State private var isRecordingKey = false
 
     var currentFlag: String {
@@ -2610,7 +2666,7 @@ struct SlotConfigView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            // Header
+            // Header with name, enable toggle, and delete button
             HStack {
                 // Toggle switch
                 Toggle("", isOn: $config.isEnabled)
@@ -2648,6 +2704,89 @@ struct SlotConfigView: View {
                 .background(accentColor.opacity(config.isEnabled ? 0.1 : 0.05))
                 .cornerRadius(8)
                 .opacity(config.isEnabled ? 1 : 0.5)
+
+                // Delete button
+                if canDelete {
+                    Button(action: { onDelete?() }) {
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.red)
+                            .frame(width: 28, height: 28)
+                            .background(Color.red.opacity(0.1))
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Remove hotkey")
+                }
+            }
+
+            // Editable name field
+            HStack(spacing: 10) {
+                Image(systemName: "tag")
+                    .foregroundColor(.secondary)
+                    .font(.subheadline)
+                Text("Name")
+                    .font(.subheadline)
+                Spacer()
+                TextField("e.g. English, Meeting...", text: $config.name)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 13))
+                    .frame(maxWidth: 200)
+                    .disabled(!config.isEnabled)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.windowBackgroundColor))
+            .cornerRadius(8)
+            .opacity(config.isEnabled ? 1 : 0.4)
+
+            // Mode selector (Push-to-Talk / Toggle)
+            HStack(spacing: 10) {
+                Image(systemName: "hand.tap")
+                    .foregroundColor(.secondary)
+                    .font(.subheadline)
+                Text("Mode")
+                    .font(.subheadline)
+                Spacer()
+                Picker("", selection: $config.mode) {
+                    Text("Push-to-Talk").tag(HotkeyMode.pushToTalk)
+                    Text("Toggle").tag(HotkeyMode.toggleToTalk)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 200)
+                .disabled(!config.isEnabled)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.windowBackgroundColor))
+            .cornerRadius(8)
+            .opacity(config.isEnabled ? 1 : 0.4)
+
+            // ESC cancel toggle (only for toggle-to-talk mode)
+            if config.mode == .toggleToTalk {
+                HStack(spacing: 10) {
+                    Image(systemName: "escape")
+                        .foregroundColor(.secondary)
+                        .font(.subheadline)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("ESC Stops Recording")
+                            .font(.subheadline)
+                        Text("Press Escape to cancel toggle recording")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $config.escCancels)
+                        .toggleStyle(SwitchToggleStyle(tint: accentColor))
+                        .labelsHidden()
+                        .scaleEffect(0.8)
+                        .disabled(!config.isEnabled)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color(NSColor.windowBackgroundColor))
+                .cornerRadius(8)
+                .opacity(config.isEnabled ? 1 : 0.4)
             }
 
             // Shortcut recorder — captures any key combination
@@ -2748,6 +2887,7 @@ struct SlotConfigView: View {
                 .stroke(accentColor.opacity(config.isEnabled ? 0.2 : 0.1), lineWidth: 1)
         )
         .animation(.easeInOut(duration: 0.15), value: config.isEnabled)
+        .animation(.easeInOut(duration: 0.15), value: config.mode)
     }
 }
 
@@ -3684,13 +3824,10 @@ class HotkeyManager {
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var slot1Config = HotkeyConfig()
-    private var slot2Config = HotkeyConfig()
-    private var slot3Config = HotkeyConfig()
-    private var slot4Config = HotkeyConfig()
+    private var slotConfigs: [HotkeyConfig] = []
     private var activationDelay: Double = 0.15
 
-    private var activeSlot: Int? = nil
+    private var activeSlotID: UUID? = nil
     private var delayTimer: Timer?
     private var isRecording = false
     private var isToggleMode = false
@@ -3698,12 +3835,15 @@ class HotkeyManager {
 
     func updateConfigs() {
         let settings = SettingsManager.shared
-        slot1Config = settings.slot1
-        slot2Config = settings.slot2
-        slot3Config = settings.slot3
-        slot4Config = settings.slot4
+        slotConfigs = settings.slots
         activationDelay = settings.activationDelay
-        log("[Speechy] Configs updated - slot1: \(slot1Config.displayName), slot2: \(slot2Config.displayName), slot3: \(slot3Config.displayName), slot4: \(slot4Config.displayName)")
+        let names = slotConfigs.map { "\($0.name.isEmpty ? "unnamed" : $0.name): \($0.displayName)" }.joined(separator: ", ")
+        log("[Speechy] Configs updated - \(slotConfigs.count) slots: \(names)")
+    }
+
+    /// Find a slot config by its UUID
+    private func configForID(_ id: UUID) -> HotkeyConfig? {
+        return slotConfigs.first { $0.id == id }
     }
 
     func startListening() {
@@ -3753,33 +3893,32 @@ class HotkeyManager {
         if type == .keyDown {
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
 
-            // Escape key (keyCode 53) stops toggle recording
+            // Escape key (keyCode 53) stops toggle recording — respects per-slot escCancels setting
             if keyCode == 53 && isRecording && isToggleMode {
-                log("[Speechy] Escape pressed, stopping toggle recording")
-                isRecording = false
-                isToggleMode = false
-                activeSlot = nil
-                DispatchQueue.main.async { self.onRecordingStop?() }
-                return nil // consume the Escape key
+                if let activeID = activeSlotID, let activeConfig = configForID(activeID), activeConfig.escCancels {
+                    log("[Speechy] Escape pressed, stopping toggle recording")
+                    isRecording = false
+                    isToggleMode = false
+                    activeSlotID = nil
+                    DispatchQueue.main.async { self.onRecordingStop?() }
+                    return nil // consume the Escape key
+                }
+                // If escCancels is false, pass through the Escape key
             }
 
-            // Check key+modifier configs on keyDown
-            let configs: [(config: HotkeyConfig, slot: Int)] = [
-                (slot1Config, 1), (slot2Config, 2), (slot3Config, 3), (slot4Config, 4)
-            ]
-
-            for (cfg, slot) in configs {
+            // Check key+modifier configs on keyDown — iterate all slots
+            for cfg in slotConfigs {
                 guard cfg.isEnabled && !cfg.isModifierOnly && cfg.keyCode == keyCode else { continue }
                 guard matchesModifiers(flags: flags, config: cfg) else { continue }
 
                 // Toggle mode: second keyDown of the same combo stops recording
-                if isRecording && isToggleMode && activeSlot == slot {
+                if isRecording && isToggleMode && activeSlotID == cfg.id {
                     if !toggleStopIgnoreRelease {
-                        log("[Speechy] Toggle key re-pressed, stopping toggle recording (slot \(slot))")
+                        log("[Speechy] Toggle key re-pressed, stopping toggle recording (\(cfg.name))")
                         toggleStopIgnoreRelease = true
                         isRecording = false
                         isToggleMode = false
-                        activeSlot = nil
+                        activeSlotID = nil
                         DispatchQueue.main.async { self.onRecordingStop?() }
                         return nil // consume
                     }
@@ -3787,8 +3926,8 @@ class HotkeyManager {
                 }
 
                 // Start recording if not already active
-                if activeSlot == nil && !isRecording {
-                    activeSlot = slot
+                if activeSlotID == nil && !isRecording {
+                    activeSlotID = cfg.id
                     isToggleMode = (cfg.mode == .toggleToTalk)
                     if isToggleMode { toggleStopIgnoreRelease = true }
                     startDelayTimer(language: cfg.language, flag: getFlag(for: cfg.language))
@@ -3806,25 +3945,16 @@ class HotkeyManager {
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
 
             // Only handle keyUp for key+modifier push-to-talk configs
-            if let slot = activeSlot, !isToggleMode {
-                let activeConfig: HotkeyConfig
-                switch slot {
-                case 1: activeConfig = slot1Config
-                case 2: activeConfig = slot2Config
-                case 3: activeConfig = slot3Config
-                case 4: activeConfig = slot4Config
-                default: activeConfig = slot1Config
-                }
-
+            if let activeID = activeSlotID, !isToggleMode, let activeConfig = configForID(activeID) {
                 if !activeConfig.isModifierOnly && activeConfig.keyCode == keyCode {
                     if isRecording {
                         isRecording = false
-                        activeSlot = nil
+                        activeSlotID = nil
                         DispatchQueue.main.async { self.onRecordingStop?() }
                     } else {
                         delayTimer?.invalidate()
                         delayTimer = nil
-                        activeSlot = nil
+                        activeSlotID = nil
                     }
                     return nil // consume the trigger key release
                 }
@@ -3832,13 +3962,7 @@ class HotkeyManager {
 
             // Toggle mode: reset the ignore flag on keyUp so next keyDown can stop
             if isRecording && isToggleMode {
-                if let slot = activeSlot {
-                    let activeConfig: HotkeyConfig
-                    switch slot {
-                    case 3: activeConfig = slot3Config
-                    case 4: activeConfig = slot4Config
-                    default: activeConfig = slot3Config
-                    }
+                if let activeID = activeSlotID, let activeConfig = configForID(activeID) {
                     if !activeConfig.isModifierOnly && activeConfig.keyCode == keyCode {
                         toggleStopIgnoreRelease = false
                         return nil // consume
@@ -3851,75 +3975,50 @@ class HotkeyManager {
 
         // === flagsChanged handling (modifier-only configs) ===
 
-        // Only process modifier-only configs in flagsChanged
-        let slot1Match = slot1Config.isEnabled && slot1Config.isModifierOnly && matchesModifiers(flags: flags, config: slot1Config)
-        let slot2Match = slot2Config.isEnabled && slot2Config.isModifierOnly && matchesModifiers(flags: flags, config: slot2Config)
-        let slot3Match = slot3Config.isEnabled && slot3Config.isModifierOnly && matchesModifiers(flags: flags, config: slot3Config)
-        let slot4Match = slot4Config.isEnabled && slot4Config.isModifierOnly && matchesModifiers(flags: flags, config: slot4Config)
-
         // Toggle mode: if recording, pressing the same modifier again stops it
         if isRecording && isToggleMode {
-            let activeConfig: HotkeyConfig
-            switch activeSlot {
-            case 3: activeConfig = slot3Config
-            case 4: activeConfig = slot4Config
-            default: activeConfig = slot3Config
-            }
-            if activeConfig.isModifierOnly {
-                if matchesModifiers(flags: flags, config: activeConfig) && !toggleStopIgnoreRelease {
-                    log("[Speechy] Toggle modifier re-pressed, stopping toggle recording")
-                    toggleStopIgnoreRelease = true
-                    isRecording = false
-                    isToggleMode = false
-                    activeSlot = nil
-                    DispatchQueue.main.async { self.onRecordingStop?() }
-                    return Unmanaged.passUnretained(event)
-                }
-                if !matchesModifiers(flags: flags, config: activeConfig) {
-                    toggleStopIgnoreRelease = false
+            if let activeID = activeSlotID, let activeConfig = configForID(activeID) {
+                if activeConfig.isModifierOnly {
+                    if matchesModifiers(flags: flags, config: activeConfig) && !toggleStopIgnoreRelease {
+                        log("[Speechy] Toggle modifier re-pressed, stopping toggle recording")
+                        toggleStopIgnoreRelease = true
+                        isRecording = false
+                        isToggleMode = false
+                        activeSlotID = nil
+                        DispatchQueue.main.async { self.onRecordingStop?() }
+                        return Unmanaged.passUnretained(event)
+                    }
+                    if !matchesModifiers(flags: flags, config: activeConfig) {
+                        toggleStopIgnoreRelease = false
+                    }
                 }
             }
             return Unmanaged.passUnretained(event)
         }
 
-        if activeSlot == nil && !isRecording {
-            // Check push-to-talk slots first
-            if slot1Match {
-                activeSlot = 1
-                isToggleMode = false
-                startDelayTimer(language: slot1Config.language, flag: getFlag(for: slot1Config.language))
-            } else if slot2Match {
-                activeSlot = 2
-                isToggleMode = false
-                startDelayTimer(language: slot2Config.language, flag: getFlag(for: slot2Config.language))
-            } else if slot3Match {
-                activeSlot = 3
-                isToggleMode = true
-                toggleStopIgnoreRelease = true
-                startDelayTimer(language: slot3Config.language, flag: getFlag(for: slot3Config.language))
-            } else if slot4Match {
-                activeSlot = 4
-                isToggleMode = true
-                toggleStopIgnoreRelease = true
-                startDelayTimer(language: slot4Config.language, flag: getFlag(for: slot4Config.language))
+        if activeSlotID == nil && !isRecording {
+            // Check all modifier-only slots — iterate in order
+            for cfg in slotConfigs {
+                guard cfg.isEnabled && cfg.isModifierOnly && matchesModifiers(flags: flags, config: cfg) else { continue }
+                activeSlotID = cfg.id
+                isToggleMode = (cfg.mode == .toggleToTalk)
+                if isToggleMode { toggleStopIgnoreRelease = true }
+                startDelayTimer(language: cfg.language, flag: getFlag(for: cfg.language))
+                break
             }
-        } else if activeSlot != nil && !isToggleMode {
+        } else if activeSlotID != nil && !isToggleMode {
             // Push-to-talk (modifier-only): stop on modifier release
-            let activeConfig: HotkeyConfig
-            switch activeSlot {
-            case 1: activeConfig = slot1Config
-            case 2: activeConfig = slot2Config
-            default: activeConfig = slot1Config
-            }
-            if activeConfig.isModifierOnly && !matchesModifiers(flags: flags, config: activeConfig) {
-                if isRecording {
-                    isRecording = false
-                    activeSlot = nil
-                    DispatchQueue.main.async { self.onRecordingStop?() }
-                } else {
-                    delayTimer?.invalidate()
-                    delayTimer = nil
-                    activeSlot = nil
+            if let activeID = activeSlotID, let activeConfig = configForID(activeID) {
+                if activeConfig.isModifierOnly && !matchesModifiers(flags: flags, config: activeConfig) {
+                    if isRecording {
+                        isRecording = false
+                        activeSlotID = nil
+                        DispatchQueue.main.async { self.onRecordingStop?() }
+                    } else {
+                        delayTimer?.invalidate()
+                        delayTimer = nil
+                        activeSlotID = nil
+                    }
                 }
             }
         }
@@ -3946,7 +4045,7 @@ class HotkeyManager {
     private func startDelayTimer(language: String, flag: String) {
         delayTimer?.invalidate()
         delayTimer = Timer.scheduledTimer(withTimeInterval: activationDelay, repeats: false) { [weak self] _ in
-            guard let self = self, self.activeSlot != nil else { return }
+            guard let self = self, self.activeSlotID != nil else { return }
             self.isRecording = true
             if self.isToggleMode {
                 self.toggleStopIgnoreRelease = false
