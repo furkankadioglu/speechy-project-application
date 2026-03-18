@@ -1,11 +1,145 @@
 /* ============================================
-   Speechy Landing Page — Interactions
+   Speechy Landing Page — Cinematic Interactions
    ============================================ */
 
 (function () {
   'use strict';
 
-  // ── Scroll-triggered fade-in animations ──────────────────────────
+  // ── Animated SVG Waveform (Hero Background) ─────────────────────
+  function initWaveform() {
+    var svg = document.getElementById('waveform-svg');
+    if (!svg) return;
+
+    var ns = 'http://www.w3.org/2000/svg';
+
+    // Wave configurations
+    var waves = [
+      { color: '#007AFF', opacity: 0.25, speed: 0.0008, amplitude: 60, frequency: 0.003, yOffset: 0.55, strokeWidth: 2 },
+      { color: '#AF52DE', opacity: 0.18, speed: 0.0012, amplitude: 45, frequency: 0.004, yOffset: 0.50, strokeWidth: 1.8 },
+      { color: '#58A6FF', opacity: 0.12, speed: 0.0018, amplitude: 30, frequency: 0.005, yOffset: 0.60, strokeWidth: 1.5 },
+      { color: '#ffffff', opacity: 0.04, speed: 0.0006, amplitude: 70, frequency: 0.002, yOffset: 0.48, strokeWidth: 2.5 },
+      { color: '#007AFF', opacity: 0.10, speed: 0.001, amplitude: 35, frequency: 0.006, yOffset: 0.65, strokeWidth: 1.2 },
+      { color: '#AF52DE', opacity: 0.08, speed: 0.0015, amplitude: 25, frequency: 0.007, yOffset: 0.58, strokeWidth: 1 },
+    ];
+
+    // Create path elements for each wave
+    var paths = [];
+    waves.forEach(function (w) {
+      var path = document.createElementNS(ns, 'path');
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', w.color);
+      path.setAttribute('stroke-opacity', w.opacity);
+      path.setAttribute('stroke-width', w.strokeWidth);
+      path.setAttribute('stroke-linecap', 'round');
+      svg.appendChild(path);
+      paths.push(path);
+    });
+
+    // Also create filled semi-transparent versions for the first two waves
+    var fills = [];
+    for (var fi = 0; fi < 2; fi++) {
+      var fillPath = document.createElementNS(ns, 'path');
+      fillPath.setAttribute('fill', waves[fi].color);
+      fillPath.setAttribute('fill-opacity', waves[fi].opacity * 0.15);
+      fillPath.setAttribute('stroke', 'none');
+      svg.insertBefore(fillPath, svg.firstChild);
+      fills.push({ path: fillPath, waveIndex: fi });
+    }
+
+    function animateWaves(time) {
+      var rect = svg.getBoundingClientRect();
+      var w = rect.width || 1200;
+      var h = rect.height || 500;
+
+      svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+
+      var step = 4; // pixels between points
+
+      waves.forEach(function (wave, idx) {
+        var points = [];
+        for (var x = 0; x <= w; x += step) {
+          var normalizedX = x / w;
+          var y = h * wave.yOffset
+            + Math.sin(x * wave.frequency + time * wave.speed) * wave.amplitude
+            + Math.sin(x * wave.frequency * 0.5 + time * wave.speed * 1.3) * wave.amplitude * 0.4
+            + Math.sin(x * wave.frequency * 2 + time * wave.speed * 0.7) * wave.amplitude * 0.15;
+          points.push(x + ',' + y.toFixed(1));
+        }
+
+        var d = 'M' + points.join(' L');
+        paths[idx].setAttribute('d', d);
+
+        // Fill paths for first two waves
+        fills.forEach(function (f) {
+          if (f.waveIndex === idx) {
+            f.path.setAttribute('d', d + ' L' + w + ',' + h + ' L0,' + h + ' Z');
+          }
+        });
+      });
+
+      requestAnimationFrame(animateWaves);
+    }
+
+    requestAnimationFrame(animateWaves);
+  }
+
+  // ── Floating Particles ──────────────────────────────────────────
+  function initParticles() {
+    var canvas = document.getElementById('particles-canvas');
+    if (!canvas) return;
+
+    var ctx = canvas.getContext('2d');
+    var particles = [];
+    var particleCount = 40;
+
+    function resize() {
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+    }
+
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Create particles
+    for (var i = 0; i < particleCount; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        size: Math.random() * 1.5 + 0.5,
+        speedX: (Math.random() - 0.5) * 0.15,
+        speedY: -Math.random() * 0.3 - 0.05,
+        opacity: Math.random() * 0.25 + 0.05,
+      });
+    }
+
+    function animateParticles() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      particles.forEach(function (p) {
+        p.x += p.speedX;
+        p.y += p.speedY;
+
+        // Wrap around
+        if (p.y < -10) {
+          p.y = canvas.height + 10;
+          p.x = Math.random() * canvas.width;
+        }
+        if (p.x < -10) p.x = canvas.width + 10;
+        if (p.x > canvas.width + 10) p.x = -10;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, ' + p.opacity + ')';
+        ctx.fill();
+      });
+
+      requestAnimationFrame(animateParticles);
+    }
+
+    animateParticles();
+  }
+
+  // ── Scroll-triggered fade-in animations ─────────────────────────
   function initScrollAnimations() {
     var elements = document.querySelectorAll('.fade-in');
     if (!elements.length) return;
@@ -13,7 +147,15 @@
     var observer = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
         if (entry.isIntersecting) {
-          entry.target.classList.add('visible');
+          // Support data-delay for staggered animations
+          var delay = entry.target.getAttribute('data-delay');
+          if (delay) {
+            setTimeout(function () {
+              entry.target.classList.add('visible');
+            }, parseInt(delay, 10));
+          } else {
+            entry.target.classList.add('visible');
+          }
           observer.unobserve(entry.target);
         }
       });
@@ -27,7 +169,7 @@
     });
   }
 
-  // ── Smooth scroll for anchor links ───────────────────────────────
+  // ── Smooth scroll for anchor links ──────────────────────────────
   function initSmoothScroll() {
     document.querySelectorAll('a[href^="#"]').forEach(function (link) {
       link.addEventListener('click', function (e) {
@@ -39,11 +181,48 @@
         var navHeight = document.querySelector('.navbar').offsetHeight;
         var top = target.getBoundingClientRect().top + window.pageYOffset - navHeight - 16;
         window.scrollTo({ top: top, behavior: 'smooth' });
+
+        // Close mobile menu if open
+        var mobileMenu = document.getElementById('nav-mobile-menu');
+        var toggle = document.getElementById('nav-toggle');
+        if (mobileMenu && mobileMenu.classList.contains('open')) {
+          mobileMenu.classList.remove('open');
+          toggle.classList.remove('active');
+        }
       });
     });
   }
 
-  // ── Active nav link highlighting ─────────────────────────────────
+  // ── Navbar scroll effect ────────────────────────────────────────
+  function initNavbarScroll() {
+    var navbar = document.getElementById('navbar');
+    if (!navbar) return;
+
+    function checkScroll() {
+      if (window.scrollY > 30) {
+        navbar.classList.add('scrolled');
+      } else {
+        navbar.classList.remove('scrolled');
+      }
+    }
+
+    checkScroll();
+    window.addEventListener('scroll', checkScroll, { passive: true });
+  }
+
+  // ── Mobile navigation toggle ────────────────────────────────────
+  function initMobileNav() {
+    var toggle = document.getElementById('nav-toggle');
+    var menu = document.getElementById('nav-mobile-menu');
+    if (!toggle || !menu) return;
+
+    toggle.addEventListener('click', function () {
+      toggle.classList.toggle('active');
+      menu.classList.toggle('open');
+    });
+  }
+
+  // ── Active nav link highlighting ────────────────────────────────
   function initNavHighlight() {
     var sections = document.querySelectorAll('section[id]');
     var navLinks = document.querySelectorAll('.nav-links a');
@@ -54,7 +233,7 @@
       var navHeight = document.querySelector('.navbar').offsetHeight;
 
       sections.forEach(function (section) {
-        var top = section.offsetTop - navHeight - 80;
+        var top = section.offsetTop - navHeight - 100;
         var bottom = top + section.offsetHeight;
         var id = section.getAttribute('id');
 
@@ -62,7 +241,7 @@
           navLinks.forEach(function (link) {
             link.style.color = '';
             if (link.getAttribute('href') === '#' + id) {
-              link.style.color = '#a855f7';
+              link.style.color = '#007AFF';
             }
           });
         }
@@ -70,120 +249,14 @@
     }, { passive: true });
   }
 
-  // ── Animated hero waveform ───────────────────────────────────────
-  function initWaveform() {
-    var container = document.querySelector('.waveform-bars');
-    if (!container) return;
-
-    var svg = container.closest('svg');
-    var numBars = 50;
-    var barWidth = 4;
-    var gap = (400 - numBars * barWidth) / (numBars - 1);
-
-    // Add gradient definition
-    var defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-    var grad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-    grad.setAttribute('id', 'waveGrad');
-    grad.setAttribute('x1', '0');
-    grad.setAttribute('y1', '0');
-    grad.setAttribute('x2', '1');
-    grad.setAttribute('y2', '0');
-
-    var stops = [
-      { offset: '0%', color: '#4f8cff' },
-      { offset: '50%', color: '#a855f7' },
-      { offset: '100%', color: '#ec4899' }
-    ];
-
-    stops.forEach(function (s) {
-      var stop = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-      stop.setAttribute('offset', s.offset);
-      stop.setAttribute('stop-color', s.color);
-      grad.appendChild(stop);
-    });
-
-    defs.appendChild(grad);
-    svg.insertBefore(defs, svg.firstChild);
-
-    // Create bars
-    var bars = [];
-    for (var i = 0; i < numBars; i++) {
-      var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      var x = i * (barWidth + gap);
-      rect.setAttribute('x', x);
-      rect.setAttribute('width', barWidth);
-      rect.setAttribute('rx', '2');
-      rect.setAttribute('fill', 'url(#waveGrad)');
-      rect.setAttribute('opacity', '0.7');
-      container.appendChild(rect);
-      bars.push(rect);
-    }
-
-    // Animate
-    var centerIndex = numBars / 2;
-    function animateBars(time) {
-      bars.forEach(function (bar, i) {
-        var distFromCenter = Math.abs(i - centerIndex) / centerIndex;
-        var baseHeight = 8 + (1 - distFromCenter) * 40;
-        var wave1 = Math.sin(time * 0.003 + i * 0.3) * 15;
-        var wave2 = Math.sin(time * 0.005 + i * 0.15) * 8;
-        var wave3 = Math.sin(time * 0.002 + i * 0.5) * 5;
-        var h = Math.max(4, baseHeight + wave1 + wave2 + wave3);
-        var y = (80 - h) / 2;
-        bar.setAttribute('height', h);
-        bar.setAttribute('y', y);
-      });
-      requestAnimationFrame(animateBars);
-    }
-
-    requestAnimationFrame(animateBars);
-  }
-
-  // ── Navbar background on scroll ──────────────────────────────────
-  function initNavbarScroll() {
-    var navbar = document.querySelector('.navbar');
-    if (!navbar) return;
-
-    window.addEventListener('scroll', function () {
-      if (window.scrollY > 50) {
-        navbar.style.background = 'rgba(15, 11, 26, 0.95)';
-      } else {
-        navbar.style.background = 'rgba(15, 11, 26, 0.8)';
-      }
-    }, { passive: true });
-  }
-
-  // ── Card tilt effect on hover ────────────────────────────────────
-  function initCardTilt() {
-    var cards = document.querySelectorAll('.feature-card, .highlight-card, .privacy-card, .step');
-
-    cards.forEach(function (card) {
-      card.addEventListener('mousemove', function (e) {
-        var rect = card.getBoundingClientRect();
-        var x = e.clientX - rect.left;
-        var y = e.clientY - rect.top;
-        var centerX = rect.width / 2;
-        var centerY = rect.height / 2;
-        var rotateX = (y - centerY) / centerY * -3;
-        var rotateY = (x - centerX) / centerX * 3;
-
-        card.style.transform = 'translateY(-4px) perspective(600px) rotateX(' + rotateX + 'deg) rotateY(' + rotateY + 'deg)';
-      });
-
-      card.addEventListener('mouseleave', function () {
-        card.style.transform = '';
-      });
-    });
-  }
-
-  // ── CAPTCHA ────────────────────────────────────────────────────
+  // ── CAPTCHA ─────────────────────────────────────────────────────
   var captchaAnswer = 0;
 
   function generateCaptcha() {
     var ops = [
       function () { var a = rand(2, 15), b = rand(1, 10); return { q: a + ' + ' + b, a: a + b }; },
-      function () { var a = rand(10, 25), b = rand(1, a - 1); return { q: a + ' − ' + b, a: a - b }; },
-      function () { var a = rand(2, 9), b = rand(2, 6); return { q: a + ' × ' + b, a: a * b }; },
+      function () { var a = rand(10, 25), b = rand(1, a - 1); return { q: a + ' \u2212 ' + b, a: a - b }; },
+      function () { var a = rand(2, 9), b = rand(2, 6); return { q: a + ' \u00d7 ' + b, a: a * b }; },
     ];
     var pick = ops[Math.floor(Math.random() * ops.length)]();
     captchaAnswer = pick.a;
@@ -197,7 +270,7 @@
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
-  // ── Email signup form ──────────────────────────────────────────
+  // ── Email signup form ───────────────────────────────────────────
   function initSignupForm() {
     var form = document.getElementById('signup-form');
     if (!form) return;
@@ -272,14 +345,15 @@
     }
   }
 
-  // ── Initialize everything on DOM ready ───────────────────────────
+  // ── Initialize everything on DOM ready ──────────────────────────
   document.addEventListener('DOMContentLoaded', function () {
+    initWaveform();
+    initParticles();
     initScrollAnimations();
     initSmoothScroll();
-    initNavHighlight();
-    initWaveform();
     initNavbarScroll();
-    initCardTilt();
+    initMobileNav();
+    initNavHighlight();
     initSignupForm();
   });
 })();
