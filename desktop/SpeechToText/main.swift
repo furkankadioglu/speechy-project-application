@@ -4338,6 +4338,17 @@ class WhisperTranscriber {
         "[APPLAUSE]",
         "♪",
         "🎵",
+        "Altyazı M.K.",
+        "Altyazı M.K",
+        "altyazı m.k.",
+        "Alt yazı M.K.",
+        "Altyazılar M.K.",
+        "ALTYAZI M.K.",
+        "Altyazı:",
+        "Alt yazı:",
+        "Subtitles by",
+        "Translated by",
+        "Çeviri:",
     ]
 
     init() {
@@ -4386,6 +4397,12 @@ class WhisperTranscriber {
 
         if let parenRegex = try? NSRegularExpression(pattern: parenPattern, options: .caseInsensitive) {
             filtered = parenRegex.stringByReplacingMatches(in: filtered, options: [], range: NSRange(filtered.startIndex..., in: filtered), withTemplate: "")
+        }
+
+        // Remove subtitle attribution patterns (e.g., "Altyazı M.K.", "Subtitles by XYZ")
+        let subtitlePattern = #"(?i)(?:alt\s?yazı|subtitle|translated|çeviri)\s*:?\s*[A-Za-zÇĞİÖŞÜçğıöşü.]+(?:\s+[A-Za-zÇĞİÖŞÜçğıöşü.]+)*"#
+        if let subtitleRegex = try? NSRegularExpression(pattern: subtitlePattern, options: []) {
+            filtered = subtitleRegex.stringByReplacingMatches(in: filtered, options: [], range: NSRange(filtered.startIndex..., in: filtered), withTemplate: "")
         }
 
         // Clean up whitespace
