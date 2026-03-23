@@ -4220,20 +4220,21 @@ class AudioRecorder {
         engine?.stop()
         engine = nil
 
-        let nativeFile = self.nativeFile
         let nativeURL = self.nativeURL
         let finalURL = self.finalURL
-        self.nativeFile = nil
 
         guard let nativeURL = nativeURL, let finalURL = finalURL else {
+            self.nativeFile = nil
             completion(nil)
             return
         }
 
-        // Wait for pending writes to finish, then convert offline
+        // Wait for pending writes to finish, then convert offline.
+        // nativeFile must be cleared inside writeQueue so that any already-queued
+        // write(from:) calls (which access self?.nativeFile) complete before we
+        // release the file — otherwise the last audio buffer(s) get dropped.
         writeQueue.async {
-            // Keep reference alive until writes complete
-            _ = nativeFile
+            self.nativeFile = nil
 
             self.convertToWhisperFormat(sourceURL: nativeURL, destinationURL: finalURL)
             try? FileManager.default.removeItem(at: nativeURL)
