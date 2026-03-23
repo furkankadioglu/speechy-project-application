@@ -4439,7 +4439,15 @@ class WhisperTranscriber {
 
             let process = Process()
             process.executableURL = URL(fileURLWithPath: self.whisperPath)
-            process.arguments = ["-m", modelPath, "-l", language, "-nt", "-np", audioURL.path]
+            process.arguments = [
+                "-m", modelPath,
+                "-l", language,
+                "-nt",          // no timestamps
+                "-np",          // no progress
+                "-nth", "0.9",  // no-speech threshold: only drop segment if 90%+ sure it's silence (default 0.6 drops real speech)
+                "-et", "3.0",   // entropy threshold: tolerate more uncertainty before decoder fallback (default 2.4 too strict)
+                audioURL.path
+            ]
 
             let outPipe = Pipe()
             let errPipe = Pipe()
