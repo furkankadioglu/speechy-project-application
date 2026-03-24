@@ -1347,7 +1347,6 @@ class SettingsManager: ObservableObject {
     @Published var pauseMediaDuringRecording: Bool
     @Published var saveAudioRecordings: Bool
     @Published var isTTSEnabled: Bool
-    @Published var ttsVoice: String  // custom voice name override (empty = auto from language)
 
     /// When true, hotkey triggers are suppressed (user is recording a new shortcut in settings)
     var isCapturingShortcut = false
@@ -1456,9 +1455,8 @@ class SettingsManager: ObservableObject {
         // Default OFF — user must opt-in to save audio recordings
         _saveAudioRecordings = Published(initialValue: defaults.bool(forKey: "saveAudioRecordings"))
 
-        // TTS: default OFF, empty voice = auto-detect from language
+        // TTS: default OFF
         _isTTSEnabled = Published(initialValue: defaults.bool(forKey: "ttsEnabled"))
-        _ttsVoice = Published(initialValue: defaults.string(forKey: "ttsVoice") ?? "")
 
         // Auto-save and notify on changes
         $slots.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
@@ -1482,8 +1480,6 @@ class SettingsManager: ObservableObject {
         $saveAudioRecordings.dropFirst()
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
         $isTTSEnabled.dropFirst()
-            .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
-        $ttsVoice.dropFirst().debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
     }
 
@@ -1535,7 +1531,6 @@ class SettingsManager: ObservableObject {
         defaults.set(pauseMediaDuringRecording, forKey: "pauseMediaDuringRecording")
         defaults.set(saveAudioRecordings, forKey: "saveAudioRecordings")
         defaults.set(isTTSEnabled, forKey: "ttsEnabled")
-        defaults.set(ttsVoice, forKey: "ttsVoice")
     }
 
     /// Directory for saved audio recordings
@@ -2436,29 +2431,6 @@ struct AdvancedTab: View {
                         }
                         .padding()
 
-                        if settings.isTTSEnabled {
-                            Divider()
-                                .padding(.horizontal)
-
-                            HStack(spacing: 14) {
-                                Image(systemName: "waveform")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.purple)
-                                    .frame(width: 28)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Custom Voice")
-                                        .font(.subheadline.weight(.medium))
-                                    TextField("Auto (e.g. Yelda, Samantha…)", text: $settings.ttsVoice)
-                                        .textFieldStyle(.roundedBorder)
-                                        .font(.system(size: 12))
-                                    Text("Leave empty to auto-select voice based on language. Run `say -v '?'` in Terminal for available voices.")
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            .padding()
-                        }
                     }
                     .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(12)
@@ -4512,15 +4484,9 @@ class LocalTTSPlayer {
 
         stop() // Stop any ongoing speech before starting new one
 
-        let voice: String
-        let override = SettingsManager.shared.ttsVoice.trimmingCharacters(in: .whitespaces)
-        if !override.isEmpty {
-            voice = override
-        } else {
-            // Use first part of language code (e.g. "en-US" → "en")
-            let langBase = String(language.prefix(2))
-            voice = voiceMap[langBase] ?? voiceMap["en"]!
-        }
+        // Auto-select voice from language code (e.g. "en-US" → "en")
+        let langBase = String(language.prefix(2))
+        let voice = voiceMap[langBase] ?? voiceMap["en"]!
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/say")
