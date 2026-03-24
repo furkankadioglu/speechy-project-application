@@ -239,6 +239,8 @@ class LicenseManager: ObservableObject {
     @Published var licenseType: String = ""
     @Published var expiresAt: String = ""
 
+    private var hourlyLicenseTimer: Timer?
+
     var storedLicenseKey: String? {
         get { UserDefaults.standard.string(forKey: licenseKeyKey) }
         set {
@@ -423,6 +425,104 @@ class LicenseManager: ObservableObject {
                 }
             }
         }.resume()
+    }
+
+    // MARK: - Hourly License Enforcement
+
+    func startHourlyLicenseCheck() {
+        hourlyLicenseTimer?.invalidate()
+        // Check every hour on main run loop
+        hourlyLicenseTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
+            self?.performHourlyCheck()
+        }
+        // Initial check 30 seconds after startup (after network settles), dispatched on main thread
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+            self?.performHourlyCheck()
+        }
+        // Re-check immediately after system wake from sleep
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            log("[Speechy] System woke from sleep — running immediate license check")
+            self?.performHourlyCheck()
+        }
+        log("[Speechy] Hourly license enforcement started")
+    }
+
+    func stopHourlyLicenseCheck() {
+        hourlyLicenseTimer?.invalidate()
+        hourlyLicenseTimer = nil
+        NSWorkspace.shared.notificationCenter.removeObserver(self, name: NSWorkspace.didWakeNotification, object: nil)
+    }
+
+    private func performHourlyCheck() {
+        guard let key = storedLicenseKey else {
+            log("[Speechy] Hourly check: no license key stored — terminating")
+            DispatchQueue.main.async { self.forceQuitDueToInvalidLicense() }
+            return
+        }
+
+        let verifyURL = URL(string: "\(baseURL)/api/license/verify")!
+        var request = URLRequest(url: verifyURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["license_key": key])
+        request.timeoutInterval = 15
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+            guard let self = self else { return }
+
+            // Network error: be lenient — skip this tick, try again next hour
+            guard error == nil,
+                  let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                log("[Speechy] Hourly check: network unavailable, skipping tick")
+                return
+            }
+
+            guard let valid = json["valid"] as? Bool else {
+                log("[Speechy] Hourly check: unexpected server response, skipping tick")
+                return
+            }
+
+            if valid {
+                log("[Speechy] Hourly check: license valid ✓")
+                DispatchQueue.main.async {
+                    UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: self.lastVerifiedKey)
+                    UserDefaults.standard.set(true, forKey: self.licenseStatusKey)
+                    if let license = json["license"] as? [String: Any] {
+                        self.licenseType = license["license_type"] as? String ?? ""
+                        self.expiresAt = license["expires_at"] as? String ?? ""
+                    }
+                }
+            } else {
+                log("[Speechy] Hourly check: license INVALID — terminating app")
+                DispatchQueue.main.async { self.forceQuitDueToInvalidLicense() }
+            }
+        }.resume()
+    }
+
+    private func forceQuitDueToInvalidLicense() {
+        // Wipe local license state so app is unusable on next launch too
+        storedLicenseKey = nil
+        UserDefaults.standard.set(false, forKey: licenseStatusKey)
+        isLicensed = false
+        licenseStatus = ""
+        licenseType = ""
+        expiresAt = ""
+
+        hourlyLicenseTimer?.invalidate()
+        hourlyLicenseTimer = nil
+
+        let alert = NSAlert()
+        alert.messageText = "License No Longer Valid"
+        alert.informativeText = "Your Speechy license has expired or been deactivated. The application will now close."
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+        NSApp.terminate(nil)
     }
 
     func deactivateAndClear() {
@@ -3497,6 +3597,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioRecorder = AudioRecorder()
         whisperTranscriber = WhisperTranscriber()
         hotkeyManager = HotkeyManager()
+
+        // Start hourly license enforcement (checks every 1 hour, first check at 30s)
+        LicenseManager.shared.startHourlyLicenseCheck()
 
         // Check permissions on every launch
         let perms = checkPermissions()
