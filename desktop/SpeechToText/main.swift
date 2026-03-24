@@ -1347,8 +1347,7 @@ class SettingsManager: ObservableObject {
     @Published var pauseMediaDuringRecording: Bool
     @Published var saveAudioRecordings: Bool
     @Published var isTTSEnabled: Bool
-    @Published var openAIAPIKey: String
-    @Published var ttsVoice: String
+    @Published var ttsVoice: String  // custom voice name override (empty = auto from language)
 
     /// When true, hotkey triggers are suppressed (user is recording a new shortcut in settings)
     var isCapturingShortcut = false
@@ -1457,10 +1456,9 @@ class SettingsManager: ObservableObject {
         // Default OFF — user must opt-in to save audio recordings
         _saveAudioRecordings = Published(initialValue: defaults.bool(forKey: "saveAudioRecordings"))
 
-        // TTS: default OFF
+        // TTS: default OFF, empty voice = auto-detect from language
         _isTTSEnabled = Published(initialValue: defaults.bool(forKey: "ttsEnabled"))
-        _openAIAPIKey = Published(initialValue: defaults.string(forKey: "openAIAPIKey") ?? "")
-        _ttsVoice = Published(initialValue: defaults.string(forKey: "ttsVoice") ?? "alloy")
+        _ttsVoice = Published(initialValue: defaults.string(forKey: "ttsVoice") ?? "")
 
         // Auto-save and notify on changes
         $slots.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
@@ -1485,9 +1483,7 @@ class SettingsManager: ObservableObject {
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
         $isTTSEnabled.dropFirst()
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
-        $openAIAPIKey.dropFirst().debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
-        $ttsVoice.dropFirst()
+        $ttsVoice.dropFirst().debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
     }
 
@@ -1539,7 +1535,6 @@ class SettingsManager: ObservableObject {
         defaults.set(pauseMediaDuringRecording, forKey: "pauseMediaDuringRecording")
         defaults.set(saveAudioRecordings, forKey: "saveAudioRecordings")
         defaults.set(isTTSEnabled, forKey: "ttsEnabled")
-        defaults.set(openAIAPIKey, forKey: "openAIAPIKey")
         defaults.set(ttsVoice, forKey: "ttsVoice")
     }
 
@@ -2428,7 +2423,7 @@ struct AdvancedTab: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Read Transcription Aloud")
                                     .font(.subheadline.weight(.medium))
-                                Text("After each transcription, automatically read it back via OpenAI TTS. Supports all languages. Useful for accessibility.")
+                                Text("Uses macOS built-in voices — no internet required. Voice is chosen automatically from your recording language.")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -2446,45 +2441,21 @@ struct AdvancedTab: View {
                                 .padding(.horizontal)
 
                             HStack(spacing: 14) {
-                                Image(systemName: "key.fill")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.orange)
-                                    .frame(width: 28)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("OpenAI API Key")
-                                        .font(.subheadline.weight(.medium))
-                                    SecureField("sk-...", text: $settings.openAIAPIKey)
-                                        .textFieldStyle(.roundedBorder)
-                                        .font(.system(size: 12, design: .monospaced))
-                                }
-                            }
-                            .padding()
-
-                            Divider()
-                                .padding(.horizontal)
-
-                            HStack(spacing: 14) {
                                 Image(systemName: "waveform")
                                     .font(.system(size: 16))
                                     .foregroundColor(.purple)
                                     .frame(width: 28)
 
-                                Text("Voice")
-                                    .font(.subheadline.weight(.medium))
-
-                                Spacer()
-
-                                Picker("", selection: $settings.ttsVoice) {
-                                    Text("Alloy").tag("alloy")
-                                    Text("Echo").tag("echo")
-                                    Text("Fable").tag("fable")
-                                    Text("Onyx").tag("onyx")
-                                    Text("Nova").tag("nova")
-                                    Text("Shimmer").tag("shimmer")
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Custom Voice")
+                                        .font(.subheadline.weight(.medium))
+                                    TextField("Auto (e.g. Yelda, Samantha…)", text: $settings.ttsVoice)
+                                        .textFieldStyle(.roundedBorder)
+                                        .font(.system(size: 12))
+                                    Text("Leave empty to auto-select voice based on language. Run `say -v '?'` in Terminal for available voices.")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
                                 }
-                                .pickerStyle(.menu)
-                                .frame(width: 120)
                             }
                             .padding()
                         }
@@ -3972,7 +3943,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         SettingsManager.shared.addToHistory(text, language: self.activeLanguage, audioPath: savedAudioURL?.path)
                         self.pasteText(text)
                         // Read transcription aloud if TTS is enabled (accessibility)
-                        OpenAITTSPlayer.shared.speak(text: text)
+                        LocalTTSPlayer.shared.speak(text: text, language: self.activeLanguage)
                     } else if let url = savedAudioURL {
                         // Transcription failed/empty — clean up the saved audio
                         try? FileManager.default.removeItem(at: url)
@@ -4510,105 +4481,68 @@ class AudioRecorder {
     }
 }
 
-// MARK: - OpenAI TTS Player
+// MARK: - Local TTS Player (macOS `say` command)
 
-class OpenAITTSPlayer: NSObject, AVAudioPlayerDelegate {
-    static let shared = OpenAITTSPlayer()
+class LocalTTSPlayer {
+    static let shared = LocalTTSPlayer()
 
-    private var audioPlayer: AVAudioPlayer?
-    private var tempAudioURL: URL?
+    private var currentProcess: Process?
 
-    func speak(text: String) {
-        let settings = SettingsManager.shared
-        guard settings.isTTSEnabled else { return }
-        guard !settings.openAIAPIKey.isEmpty else {
-            log("[Speechy] TTS skipped: no OpenAI API key configured")
-            return
-        }
+    /// Maps Whisper language codes to installed macOS voice names
+    private let voiceMap: [String: String] = [
+        "tr": "Yelda",
+        "en": "Samantha",
+        "de": "Anna",
+        "fr": "Thomas",
+        "it": "Alice",
+        "pt": "Joana",
+        "ja": "Kyoko",
+        "ko": "Yuna",
+        "zh": "Tingting",
+        "ru": "Milena",
+        "nl": "Xander",
+        "pl": "Zosia",
+        "id": "Damayanti",
+        "hi": "Lekha",
+    ]
+
+    func speak(text: String, language: String) {
+        guard SettingsManager.shared.isTTSEnabled else { return }
         guard !text.isEmpty else { return }
 
-        let url = URL(string: "https://api.openai.com/v1/audio/speech")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(settings.openAIAPIKey)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 30
+        stop() // Stop any ongoing speech before starting new one
 
-        let body: [String: Any] = [
-            "model": "tts-1",
-            "input": text,
-            "voice": settings.ttsVoice,
-            "response_format": "mp3"
-        ]
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        let voice: String
+        let override = SettingsManager.shared.ttsVoice.trimmingCharacters(in: .whitespaces)
+        if !override.isEmpty {
+            voice = override
+        } else {
+            // Use first part of language code (e.g. "en-US" → "en")
+            let langBase = String(language.prefix(2))
+            voice = voiceMap[langBase] ?? voiceMap["en"]!
+        }
 
-        log("[Speechy] TTS request — voice: \(settings.ttsVoice), length: \(text.count) chars")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/say")
+        process.arguments = ["-v", voice, text]
+        process.terminationHandler = { _ in }
 
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            guard let self = self else { return }
-
-            if let error = error {
-                log("[Speechy] TTS network error: \(error.localizedDescription)")
-                return
-            }
-            guard let data = data, !data.isEmpty else {
-                log("[Speechy] TTS empty response")
-                return
-            }
-
-            // Check for API error in JSON response
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let errorObj = json["error"] as? [String: Any],
-               let message = errorObj["message"] as? String {
-                log("[Speechy] TTS API error: \(message)")
-                return
-            }
-
-            let tempURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString + ".mp3")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
-                try data.write(to: tempURL)
-                DispatchQueue.main.async { self.playAudio(url: tempURL) }
+                try process.run()
+                self?.currentProcess = process
+                log("[Speechy] TTS speaking — voice: \(voice), chars: \(text.count)")
+                process.waitUntilExit()
+                self?.currentProcess = nil
             } catch {
-                log("[Speechy] TTS write error: \(error)")
+                log("[Speechy] TTS error: \(error.localizedDescription)")
             }
-        }.resume()
-    }
-
-    private func playAudio(url: URL) {
-        // Clean up previous temp file
-        if let old = tempAudioURL {
-            try? FileManager.default.removeItem(at: old)
         }
-        tempAudioURL = url
-
-        do {
-            audioPlayer?.stop()
-            audioPlayer = try AVAudioPlayer(contentsOf: url)
-            audioPlayer?.delegate = self
-            audioPlayer?.prepareToPlay()
-            audioPlayer?.play()
-            log("[Speechy] TTS playback started")
-        } catch {
-            log("[Speechy] TTS playback error: \(error)")
-        }
-    }
-
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        if let url = tempAudioURL {
-            try? FileManager.default.removeItem(at: url)
-            tempAudioURL = nil
-        }
-        log("[Speechy] TTS playback finished")
     }
 
     func stop() {
-        audioPlayer?.stop()
-        audioPlayer = nil
-        if let url = tempAudioURL {
-            try? FileManager.default.removeItem(at: url)
-            tempAudioURL = nil
-        }
+        currentProcess?.terminate()
+        currentProcess = nil
     }
 }
 
