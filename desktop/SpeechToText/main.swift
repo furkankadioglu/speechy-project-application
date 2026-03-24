@@ -482,6 +482,13 @@ class LicenseManager: ObservableObject {
                 return
             }
 
+            // Server explicitly rejected the key (deleted/invalid) — terminate
+            if let errorMsg = json["error"] as? String {
+                log("[Speechy] Hourly check: server rejected license (\(errorMsg)) — terminating")
+                DispatchQueue.main.async { self.forceQuitDueToInvalidLicense() }
+                return
+            }
+
             guard let valid = json["valid"] as? Bool else {
                 log("[Speechy] Hourly check: unexpected server response, skipping tick")
                 return
