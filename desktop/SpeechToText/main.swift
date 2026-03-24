@@ -1346,6 +1346,9 @@ class SettingsManager: ObservableObject {
     @Published var waveDivisor: Double
     @Published var pauseMediaDuringRecording: Bool
     @Published var saveAudioRecordings: Bool
+    @Published var isTTSEnabled: Bool
+    @Published var openAIAPIKey: String
+    @Published var ttsVoice: String
 
     /// When true, hotkey triggers are suppressed (user is recording a new shortcut in settings)
     var isCapturingShortcut = false
@@ -1454,6 +1457,11 @@ class SettingsManager: ObservableObject {
         // Default OFF — user must opt-in to save audio recordings
         _saveAudioRecordings = Published(initialValue: defaults.bool(forKey: "saveAudioRecordings"))
 
+        // TTS: default OFF
+        _isTTSEnabled = Published(initialValue: defaults.bool(forKey: "ttsEnabled"))
+        _openAIAPIKey = Published(initialValue: defaults.string(forKey: "openAIAPIKey") ?? "")
+        _ttsVoice = Published(initialValue: defaults.string(forKey: "ttsVoice") ?? "alloy")
+
         // Auto-save and notify on changes
         $slots.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
@@ -1474,6 +1482,12 @@ class SettingsManager: ObservableObject {
         $pauseMediaDuringRecording.dropFirst()
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
         $saveAudioRecordings.dropFirst()
+            .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
+        $isTTSEnabled.dropFirst()
+            .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
+        $openAIAPIKey.dropFirst().debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
+        $ttsVoice.dropFirst()
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
     }
 
@@ -1524,6 +1538,9 @@ class SettingsManager: ObservableObject {
         defaults.set(waveDivisor, forKey: "waveDivisor")
         defaults.set(pauseMediaDuringRecording, forKey: "pauseMediaDuringRecording")
         defaults.set(saveAudioRecordings, forKey: "saveAudioRecordings")
+        defaults.set(isTTSEnabled, forKey: "ttsEnabled")
+        defaults.set(openAIAPIKey, forKey: "openAIAPIKey")
+        defaults.set(ttsVoice, forKey: "ttsVoice")
     }
 
     /// Directory for saved audio recordings
@@ -2394,6 +2411,87 @@ struct AdvancedTab: View {
                     }
                     .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(12)
+                }
+
+                // Section: Text to Speech
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeader(icon: "speaker.wave.3.fill", title: "Text to Speech", color: .indigo)
+
+                    VStack(spacing: 0) {
+                        HStack(alignment: .top, spacing: 14) {
+                            Image(systemName: "speaker.wave.2.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(.indigo)
+                                .frame(width: 28)
+                                .padding(.top, 2)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Read Transcription Aloud")
+                                    .font(.subheadline.weight(.medium))
+                                Text("After each transcription, automatically read it back via OpenAI TTS. Supports all languages. Useful for accessibility.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+
+                            Toggle("", isOn: $settings.isTTSEnabled)
+                                .toggleStyle(SwitchToggleStyle(tint: .indigo))
+                                .labelsHidden()
+                        }
+                        .padding()
+
+                        if settings.isTTSEnabled {
+                            Divider()
+                                .padding(.horizontal)
+
+                            HStack(spacing: 14) {
+                                Image(systemName: "key.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.orange)
+                                    .frame(width: 28)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("OpenAI API Key")
+                                        .font(.subheadline.weight(.medium))
+                                    SecureField("sk-...", text: $settings.openAIAPIKey)
+                                        .textFieldStyle(.roundedBorder)
+                                        .font(.system(size: 12, design: .monospaced))
+                                }
+                            }
+                            .padding()
+
+                            Divider()
+                                .padding(.horizontal)
+
+                            HStack(spacing: 14) {
+                                Image(systemName: "waveform")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.purple)
+                                    .frame(width: 28)
+
+                                Text("Voice")
+                                    .font(.subheadline.weight(.medium))
+
+                                Spacer()
+
+                                Picker("", selection: $settings.ttsVoice) {
+                                    Text("Alloy").tag("alloy")
+                                    Text("Echo").tag("echo")
+                                    Text("Fable").tag("fable")
+                                    Text("Onyx").tag("onyx")
+                                    Text("Nova").tag("nova")
+                                    Text("Shimmer").tag("shimmer")
+                                }
+                                .pickerStyle(.menu)
+                                .frame(width: 120)
+                            }
+                            .padding()
+                        }
+                    }
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(12)
+                    .animation(.easeInOut(duration: 0.2), value: settings.isTTSEnabled)
                 }
             }
             .padding()
@@ -3873,6 +3971,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     if let text = result, !text.isEmpty {
                         SettingsManager.shared.addToHistory(text, language: self.activeLanguage, audioPath: savedAudioURL?.path)
                         self.pasteText(text)
+                        // Read transcription aloud if TTS is enabled (accessibility)
+                        OpenAITTSPlayer.shared.speak(text: text)
                     } else if let url = savedAudioURL {
                         // Transcription failed/empty — clean up the saved audio
                         try? FileManager.default.removeItem(at: url)
@@ -4406,6 +4506,108 @@ class AudioRecorder {
             log("[Speechy] Audio converted: \(sourceFile.length) frames @ \(sourceFormat.sampleRate)Hz -> 16kHz WAV")
         } catch {
             log("[Speechy] Format conversion failed: \(error)")
+        }
+    }
+}
+
+// MARK: - OpenAI TTS Player
+
+class OpenAITTSPlayer: NSObject, AVAudioPlayerDelegate {
+    static let shared = OpenAITTSPlayer()
+
+    private var audioPlayer: AVAudioPlayer?
+    private var tempAudioURL: URL?
+
+    func speak(text: String) {
+        let settings = SettingsManager.shared
+        guard settings.isTTSEnabled else { return }
+        guard !settings.openAIAPIKey.isEmpty else {
+            log("[Speechy] TTS skipped: no OpenAI API key configured")
+            return
+        }
+        guard !text.isEmpty else { return }
+
+        let url = URL(string: "https://api.openai.com/v1/audio/speech")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(settings.openAIAPIKey)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 30
+
+        let body: [String: Any] = [
+            "model": "tts-1",
+            "input": text,
+            "voice": settings.ttsVoice,
+            "response_format": "mp3"
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        log("[Speechy] TTS request — voice: \(settings.ttsVoice), length: \(text.count) chars")
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+
+            if let error = error {
+                log("[Speechy] TTS network error: \(error.localizedDescription)")
+                return
+            }
+            guard let data = data, !data.isEmpty else {
+                log("[Speechy] TTS empty response")
+                return
+            }
+
+            // Check for API error in JSON response
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let errorObj = json["error"] as? [String: Any],
+               let message = errorObj["message"] as? String {
+                log("[Speechy] TTS API error: \(message)")
+                return
+            }
+
+            let tempURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString + ".mp3")
+            do {
+                try data.write(to: tempURL)
+                DispatchQueue.main.async { self.playAudio(url: tempURL) }
+            } catch {
+                log("[Speechy] TTS write error: \(error)")
+            }
+        }.resume()
+    }
+
+    private func playAudio(url: URL) {
+        // Clean up previous temp file
+        if let old = tempAudioURL {
+            try? FileManager.default.removeItem(at: old)
+        }
+        tempAudioURL = url
+
+        do {
+            audioPlayer?.stop()
+            audioPlayer = try AVAudioPlayer(contentsOf: url)
+            audioPlayer?.delegate = self
+            audioPlayer?.prepareToPlay()
+            audioPlayer?.play()
+            log("[Speechy] TTS playback started")
+        } catch {
+            log("[Speechy] TTS playback error: \(error)")
+        }
+    }
+
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        if let url = tempAudioURL {
+            try? FileManager.default.removeItem(at: url)
+            tempAudioURL = nil
+        }
+        log("[Speechy] TTS playback finished")
+    }
+
+    func stop() {
+        audioPlayer?.stop()
+        audioPlayer = nil
+        if let url = tempAudioURL {
+            try? FileManager.default.removeItem(at: url)
+            tempAudioURL = nil
         }
     }
 }
