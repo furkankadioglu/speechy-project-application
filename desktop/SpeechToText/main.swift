@@ -7,10 +7,33 @@ import Combine
 import ServiceManagement
 
 // MARK: - Logger
+
+class LogManager: ObservableObject {
+    static let shared = LogManager()
+    @Published var entries: [String] = []
+    private let maxEntries = 500
+
+    func append(_ line: String) {
+        DispatchQueue.main.async {
+            self.entries.append(line)
+            if self.entries.count > self.maxEntries {
+                self.entries.removeFirst(self.entries.count - self.maxEntries)
+            }
+        }
+    }
+
+    func clear() {
+        DispatchQueue.main.async { self.entries.removeAll() }
+    }
+
+    var allText: String { entries.joined() }
+}
+
 func log(_ message: String) {
     let logFile = "/tmp/speechy_debug.log"
     let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
     let line = "[\(timestamp)] \(message)\n"
+    // Write to file
     let url = URL(fileURLWithPath: logFile)
     if let handle = try? FileHandle(forWritingTo: url) {
         handle.seekToEndOfFile()
@@ -19,6 +42,8 @@ func log(_ message: String) {
     } else {
         try? line.write(toFile: logFile, atomically: true, encoding: .utf8)
     }
+    // Also push to in-memory LogManager for UI display
+    LogManager.shared.append(line)
 }
 
 // MARK: - Data Models
@@ -2027,6 +2052,12 @@ struct SettingsView: View {
                         isSelected: selectedTab == 3,
                         action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 3 } }
                     )
+                    SidebarItem(
+                        title: "Logs",
+                        icon: "terminal.fill",
+                        isSelected: selectedTab == 4,
+                        action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 4 } }
+                    )
                 }
                 .padding(.horizontal, 8)
 
@@ -2067,8 +2098,10 @@ struct SettingsView: View {
                     AdvancedTab(settings: settings)
                 case 2:
                     HistoryTab(settings: settings)
-                default:
+                case 3:
                     LicenseTab()
+                default:
+                    LogsTab()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -2446,6 +2479,92 @@ struct AdvancedTab: View {
             }
             .padding()
         }
+    }
+}
+
+// MARK: - Logs Tab
+
+struct LogsTab: View {
+    @ObservedObject private var logManager = LogManager.shared
+    @State private var autoScroll = true
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Toolbar
+            HStack(spacing: 12) {
+                Image(systemName: "terminal.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.green)
+                Text("Logs")
+                    .font(.headline)
+                Spacer()
+                Text("\(logManager.entries.count) entries")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Toggle("Auto-scroll", isOn: $autoScroll)
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                Button {
+                    let pb = NSPasteboard.general
+                    pb.clearContents()
+                    pb.setString(logManager.allText, forType: .string)
+                } label: {
+                    Label("Copy All", systemImage: "doc.on.doc")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                Button {
+                    logManager.clear()
+                } label: {
+                    Label("Clear", systemImage: "trash")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color(NSColor.windowBackgroundColor))
+
+            Divider()
+
+            // Log entries
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(logManager.entries.enumerated()), id: \.offset) { idx, line in
+                            Text(line)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(lineColor(line))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 1)
+                                .id(idx)
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+                .background(Color.black.opacity(0.85))
+                .onChange(of: logManager.entries.count) { _ in
+                    if autoScroll, let last = logManager.entries.indices.last {
+                        withAnimation(.none) { proxy.scrollTo(last, anchor: .bottom) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func lineColor(_ line: String) -> Color {
+        if line.contains("ERROR") || line.contains("error") || line.contains("INVALID") || line.contains("failed") || line.contains("Failed") {
+            return .red.opacity(0.9)
+        }
+        if line.contains("WARNING") || line.contains("warning") || line.contains("not found") || line.contains("skipping") {
+            return .yellow.opacity(0.9)
+        }
+        if line.contains("✓") || line.contains("valid") || line.contains("success") || line.contains("activated") || line.contains("started") {
+            return .green.opacity(0.9)
+        }
+        return Color(NSColor.lightGray)
     }
 }
 
@@ -4521,7 +4640,20 @@ class LocalTTSPlayer {
 
 // MARK: - Whisper Transcriber
 class WhisperTranscriber {
-    private let whisperPath = "/opt/homebrew/opt/whisper-cpp/bin/whisper-cli"
+    // Resolved at runtime: Apple Silicon uses /opt/homebrew, Intel uses /usr/local
+    private var whisperPath: String {
+        let candidates = [
+            "/opt/homebrew/opt/whisper-cpp/bin/whisper-cli", // Apple Silicon Homebrew
+            "/usr/local/opt/whisper-cpp/bin/whisper-cli",    // Intel Homebrew
+            "/opt/homebrew/bin/whisper-cli",                  // Apple Silicon (direct)
+            "/usr/local/bin/whisper-cli",                     // Intel (direct)
+        ]
+        if let found = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }) {
+            return found
+        }
+        log("[Speechy] WARNING: whisper-cli not found in any known path")
+        return candidates[0]
+    }
     private var currentModel: ModelType = .fast
 
     // Patterns to filter out (music, silence, non-speech)
