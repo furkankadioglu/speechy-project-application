@@ -25,6 +25,8 @@ public class SettingsData
     public double WaveExponent { get; set; } = 0.45;
     public double WaveDivisor { get; set; } = 1.0;
     public bool PauseMediaDuringRecording { get; set; } = true;
+    public List<string> SavedWords { get; set; } = new();
+    public string ModalConfig { get; set; } = "default";
     public string? StoredLicenseKey { get; set; }
     public bool CachedLicenseStatus { get; set; } = false;
     public double LastLicenseVerified { get; set; } = 0;
@@ -61,6 +63,8 @@ public sealed class SettingsManager : INotifyPropertyChanged
     private double _waveExponent;
     private double _waveDivisor;
     private bool _pauseMediaDuringRecording;
+    private List<string> _savedWords = new();
+    private Models.ModalConfig _modalConfig;
 
     private SettingsManager()
     {
@@ -130,6 +134,35 @@ public sealed class SettingsManager : INotifyPropertyChanged
     {
         get => _pauseMediaDuringRecording;
         set { _pauseMediaDuringRecording = value; OnPropertyChanged(); SaveDebounced(); }
+    }
+
+    public List<string> SavedWords
+    {
+        get => _savedWords;
+        set { _savedWords = value; OnPropertyChanged(); SaveDebounced(); }
+    }
+
+    public Models.ModalConfig ModalConfig
+    {
+        get => _modalConfig;
+        set { _modalConfig = value; OnPropertyChanged(); OnPropertyChanged(nameof(WhisperPrompt)); SaveDebounced(); }
+    }
+
+    /// <summary>
+    /// Builds the whisper --prompt string from saved words + modal config hint.
+    /// </summary>
+    public string? WhisperPrompt
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (_savedWords.Count > 0)
+                parts.Add(string.Join(", ", _savedWords));
+            var hint = _modalConfig.PromptHint();
+            if (!string.IsNullOrEmpty(hint))
+                parts.Add(hint);
+            return parts.Count > 0 ? string.Join(". ", parts) : null;
+        }
     }
 
     // --- Waveform Visualization ---
@@ -306,6 +339,8 @@ public sealed class SettingsManager : INotifyPropertyChanged
                 WaveExponent = _waveExponent,
                 WaveDivisor = _waveDivisor,
                 PauseMediaDuringRecording = _pauseMediaDuringRecording,
+                SavedWords = _savedWords,
+                ModalConfig = _modalConfig.RawValue(),
             };
 
             // Preserve license data
@@ -354,6 +389,8 @@ public sealed class SettingsManager : INotifyPropertyChanged
             _waveExponent = data.WaveExponent == 0 ? 0.45 : data.WaveExponent;
             _waveDivisor = data.WaveDivisor == 0 ? 1.0 : data.WaveDivisor;
             _pauseMediaDuringRecording = data.PauseMediaDuringRecording;
+            _savedWords = data.SavedWords ?? new List<string>();
+            _modalConfig = Models.ModalConfigExtensions.FromRawValue(data.ModalConfig);
 
             Log.Info("Settings loaded");
         }

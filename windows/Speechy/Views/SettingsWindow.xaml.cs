@@ -24,8 +24,8 @@ public partial class SettingsWindow : Window
     public SettingsWindow()
     {
         InitializeComponent();
-        _navButtons = new[] { NavSettings, NavAdvanced, NavHistory, NavLicense };
-        _tabContents = new UIElement[] { SettingsTabContent, AdvancedTabContent, HistoryTabContent, LicenseTabContent };
+        _navButtons = new[] { NavSettings, NavAdvanced, NavHistory, NavLicense, NavPrompt };
+        _tabContents = new UIElement[] { SettingsTabContent, AdvancedTabContent, HistoryTabContent, LicenseTabContent, PromptTabContent };
         SelectTab(0);
     }
 
@@ -33,6 +33,7 @@ public partial class SettingsWindow : Window
     private void NavAdvanced_Click(object sender, RoutedEventArgs e) => SelectTab(1);
     private void NavHistory_Click(object sender, RoutedEventArgs e) => SelectTab(2);
     private void NavLicense_Click(object sender, RoutedEventArgs e) => SelectTab(3);
+    private void NavPrompt_Click(object sender, RoutedEventArgs e) => SelectTab(4);
 
     private void QuitButton_Click(object sender, RoutedEventArgs e)
     {

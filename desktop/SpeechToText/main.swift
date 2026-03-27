@@ -250,6 +250,65 @@ enum ModelType: String, Codable, CaseIterable {
     }
 }
 
+// MARK: - Modal Config Type
+enum ModalConfigType: String, Codable, CaseIterable {
+    case `default`     = "default"
+    case noPunctuation = "noPunctuation"
+    case noCapitalize  = "noCapitalize"
+    case allLowercase  = "allLowercase"
+    case formal        = "formal"
+    case paragraphs    = "paragraphs"
+    case meetingNotes  = "meetingNotes"
+
+    var displayName: String {
+        switch self {
+        case .default:       return "Default"
+        case .noPunctuation: return "No Punctuation"
+        case .noCapitalize:  return "No Capitalization"
+        case .allLowercase:  return "All Lowercase"
+        case .formal:        return "Formal / Corporate"
+        case .paragraphs:    return "Paragraph Breaks"
+        case .meetingNotes:  return "Meeting Notes"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .default:       return "Standard transcription, no style changes"
+        case .noPunctuation: return "Output without any punctuation marks"
+        case .noCapitalize:  return "Don't capitalize the start of sentences"
+        case .allLowercase:  return "Write everything in lowercase letters"
+        case .formal:        return "Use formal and corporate language style"
+        case .paragraphs:    return "Break transcription into paragraphs by topic"
+        case .meetingNotes:  return "Format output as structured meeting notes"
+        }
+    }
+
+    var promptHint: String {
+        switch self {
+        case .default:       return ""
+        case .noPunctuation: return "no punctuation"
+        case .noCapitalize:  return "no capitalization"
+        case .allLowercase:  return "all lowercase"
+        case .formal:        return "formal corporate professional language"
+        case .paragraphs:    return "new paragraph for each topic"
+        case .meetingNotes:  return "[Meeting Notes]"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .default:       return "text.alignleft"
+        case .noPunctuation: return "textformat.abc"
+        case .noCapitalize:  return "textformat.size.smaller"
+        case .allLowercase:  return "textformat"
+        case .formal:        return "building.2"
+        case .paragraphs:    return "text.alignjustify"
+        case .meetingNotes:  return "list.bullet.clipboard"
+        }
+    }
+}
+
 // MARK: - License Manager
 class LicenseManager: ObservableObject {
     static let shared = LicenseManager()
@@ -1379,6 +1438,8 @@ class SettingsManager: ObservableObject {
     @Published var pauseMediaDuringRecording: Bool
     @Published var saveAudioRecordings: Bool
     @Published var isTTSEnabled: Bool
+    @Published var savedWords: [String]
+    @Published var modalConfig: ModalConfigType
 
     /// When true, hotkey triggers are suppressed (user is recording a new shortcut in settings)
     var isCapturingShortcut = false
@@ -1490,6 +1551,18 @@ class SettingsManager: ObservableObject {
         // TTS: default OFF
         _isTTSEnabled = Published(initialValue: defaults.bool(forKey: "ttsEnabled"))
 
+        // Saved words: load array from JSON
+        if let data = defaults.data(forKey: "savedWords"),
+           let words = try? JSONDecoder().decode([String].self, from: data) {
+            _savedWords = Published(initialValue: words)
+        } else {
+            _savedWords = Published(initialValue: [])
+        }
+
+        // Modal config: load from raw value
+        let rawConfig = defaults.string(forKey: "modalConfig") ?? "default"
+        _modalConfig = Published(initialValue: ModalConfigType(rawValue: rawConfig) ?? .default)
+
         // Auto-save and notify on changes
         $slots.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
@@ -1512,6 +1585,10 @@ class SettingsManager: ObservableObject {
         $saveAudioRecordings.dropFirst()
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
         $isTTSEnabled.dropFirst()
+            .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
+        $savedWords.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
+        $modalConfig.dropFirst()
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
     }
 
@@ -1563,6 +1640,21 @@ class SettingsManager: ObservableObject {
         defaults.set(pauseMediaDuringRecording, forKey: "pauseMediaDuringRecording")
         defaults.set(saveAudioRecordings, forKey: "saveAudioRecordings")
         defaults.set(isTTSEnabled, forKey: "ttsEnabled")
+        if let data = try? JSONEncoder().encode(savedWords) { defaults.set(data, forKey: "savedWords") }
+        defaults.set(modalConfig.rawValue, forKey: "modalConfig")
+    }
+
+    /// Builds the whisper --prompt string from saved words + modal config hint.
+    var whisperPrompt: String? {
+        var parts: [String] = []
+        if !savedWords.isEmpty {
+            parts.append(savedWords.joined(separator: ", "))
+        }
+        let hint = modalConfig.promptHint
+        if !hint.isEmpty {
+            parts.append(hint)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: ". ")
     }
 
     /// Directory for saved audio recordings
@@ -2058,6 +2150,12 @@ struct SettingsView: View {
                         isSelected: selectedTab == 4,
                         action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 4 } }
                     )
+                    SidebarItem(
+                        title: "Prompt",
+                        icon: "wand.and.rays",
+                        isSelected: selectedTab == 5,
+                        action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 5 } }
+                    )
                 }
                 .padding(.horizontal, 8)
 
@@ -2100,8 +2198,10 @@ struct SettingsView: View {
                     HistoryTab(settings: settings)
                 case 3:
                     LicenseTab()
-                default:
+                case 4:
                     LogsTab()
+                default:
+                    PromptTab(settings: settings)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -2565,6 +2665,211 @@ struct LogsTab: View {
             return .green.opacity(0.9)
         }
         return Color(NSColor.lightGray)
+    }
+}
+
+// MARK: - Prompt Tab
+
+struct PromptTab: View {
+    @ObservedObject var settings: SettingsManager
+    @State private var newWordInput: String = ""
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                savedWordsSection
+                modalConfigSection
+            }
+            .padding()
+        }
+    }
+
+    // MARK: Saved Words Section
+    private var savedWordsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                SectionHeader(icon: "text.badge.checkmark", title: "Saved Words", color: .green)
+                Spacer()
+                Text("\(settings.savedWords.count) words")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+
+            Text("These words are suggested to the AI to improve recognition of names, brands, and technical terms.")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+
+            // Add word row
+            HStack(spacing: 8) {
+                TextField("Add a word or phrase...", text: $newWordInput)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(8)
+                    .onSubmit { addWord() }
+
+                Button(action: addWord) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundColor(newWordInput.trimmingCharacters(in: .whitespaces).isEmpty ? .secondary : .green)
+                }
+                .buttonStyle(.plain)
+                .disabled(newWordInput.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+
+            if settings.savedWords.isEmpty {
+                wordListEmpty
+            } else {
+                wordListFilled
+            }
+        }
+    }
+
+    private var wordListEmpty: some View {
+        HStack {
+            Spacer()
+            VStack(spacing: 6) {
+                Image(systemName: "text.badge.plus")
+                    .font(.system(size: 24))
+                    .foregroundColor(.secondary.opacity(0.5))
+                Text("No saved words yet")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.vertical, 20)
+            Spacer()
+        }
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(12)
+    }
+
+    private var wordListFilled: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(settings.savedWords.enumerated()), id: \.offset) { index, word in
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(.green.opacity(0.8))
+                    Text(word)
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    Button(action: {
+                        let i = index
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            var updated = settings.savedWords
+                            updated.remove(at: i)
+                            settings.savedWords = updated
+                        }
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(.secondary.opacity(0.6))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color(NSColor.controlBackgroundColor))
+
+                if index < settings.savedWords.count - 1 {
+                    Divider().padding(.leading, 36)
+                }
+            }
+        }
+        .cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(NSColor.separatorColor), lineWidth: 1))
+    }
+
+    // MARK: Modal Configurations Section
+    private var modalConfigSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(icon: "wand.and.rays", title: "Modal Configurations", color: .purple)
+
+            Text("Select a transcription style. This hint is sent to the AI with every recording.")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+
+            VStack(spacing: 0) {
+                ForEach(ModalConfigType.allCases, id: \.self) { config in
+                    ModalConfigRow(config: config, isSelected: settings.modalConfig == config) {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            settings.modalConfig = config
+                        }
+                    }
+                    if config != ModalConfigType.allCases.last {
+                        Divider().padding(.leading, 48)
+                    }
+                }
+            }
+            .cornerRadius(12)
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(NSColor.separatorColor), lineWidth: 1))
+
+            if let prompt = settings.whisperPrompt {
+                HStack(spacing: 6) {
+                    Image(systemName: "quote.bubble")
+                        .font(.system(size: 11))
+                        .foregroundColor(.purple.opacity(0.7))
+                    Text("Prompt: \"\(prompt)\"")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+                .padding(10)
+                .background(Color.purple.opacity(0.06))
+                .cornerRadius(8)
+            }
+        }
+    }
+
+    private func addWord() {
+        let word = newWordInput.trimmingCharacters(in: .whitespaces)
+        guard !word.isEmpty, !settings.savedWords.contains(word) else { return }
+        withAnimation(.easeInOut(duration: 0.15)) {
+            settings.savedWords.append(word)
+        }
+        newWordInput = ""
+    }
+}
+
+struct ModalConfigRow: View {
+    let config: ModalConfigType
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .stroke(isSelected ? Color.purple : Color.secondary.opacity(0.4), lineWidth: 2)
+                        .frame(width: 18, height: 18)
+                    if isSelected {
+                        Circle()
+                            .fill(Color.purple)
+                            .frame(width: 10, height: 10)
+                    }
+                }
+                Image(systemName: config.icon)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(isSelected ? .purple : .secondary)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(config.displayName)
+                        .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                        .foregroundColor(.primary)
+                    Text(config.description)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(isSelected ? Color.purple.opacity(0.08) : Color(NSColor.controlBackgroundColor))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -4642,17 +4947,45 @@ class LocalTTSPlayer {
 class WhisperTranscriber {
     // Resolved at runtime: Apple Silicon uses /opt/homebrew, Intel uses /usr/local
     private var whisperPath: String {
+        // Strategy 1: use PATH-based discovery via /usr/bin/which
+        if let found = findWhisperViaPATH() {
+            log("[Speechy] whisper-cli found via PATH: \(found)")
+            return found
+        }
+        // Strategy 2: check known absolute paths using POSIX access()
         let candidates = [
             "/opt/homebrew/opt/whisper-cpp/bin/whisper-cli", // Apple Silicon Homebrew
             "/usr/local/opt/whisper-cpp/bin/whisper-cli",    // Intel Homebrew
             "/opt/homebrew/bin/whisper-cli",                  // Apple Silicon (direct)
             "/usr/local/bin/whisper-cli",                     // Intel (direct)
         ]
-        if let found = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }) {
-            return found
+        for path in candidates {
+            let ok = access(path, X_OK) == 0
+            log("[Speechy] whisper-cli check: \(ok ? "✓" : "✗") \(path)")
+            if ok { return path }
         }
         log("[Speechy] WARNING: whisper-cli not found in any known path")
         return candidates[0]
+    }
+
+    private func findWhisperViaPATH() -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+        process.arguments = ["whisper-cli"]
+        // Augment PATH with Homebrew locations so /usr/bin/which can find it
+        var env = ProcessInfo.processInfo.environment
+        let extra = "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin"
+        env["PATH"] = extra + ":" + (env["PATH"] ?? "/usr/bin:/bin")
+        process.environment = env
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe() // suppress any errors
+        guard (try? process.run()) != nil else { return nil }
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return path.isEmpty ? nil : path
     }
     private var currentModel: ModelType = .fast
 
@@ -4783,15 +5116,20 @@ class WhisperTranscriber {
 
             let process = Process()
             process.executableURL = URL(fileURLWithPath: self.whisperPath)
-            process.arguments = [
+            var args = [
                 "-m", modelPath,
                 "-l", language,
                 "-nt",          // no timestamps
                 "-np",          // no progress
-                "-nth", "0.9",  // no-speech threshold: only drop segment if 90%+ sure it's silence (default 0.6 drops real speech)
-                "-et", "3.0",   // entropy threshold: tolerate more uncertainty before decoder fallback (default 2.4 too strict)
-                audioURL.path
+                "-nth", "0.9",  // no-speech threshold
+                "-et", "3.0",   // entropy threshold
             ]
+            if let prompt = SettingsManager.shared.whisperPrompt {
+                args += ["--prompt", prompt]
+                log("[Speechy] Whisper prompt: \"\(prompt)\"")
+            }
+            args.append(audioURL.path)
+            process.arguments = args
 
             let outPipe = Pipe()
             let errPipe = Pipe()

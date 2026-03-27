@@ -1,0 +1,234 @@
+<UserControl x:Class="Speechy.Views.Tabs.PromptTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                  Background="Transparent">
+        <StackPanel Margin="20">
+
+            <!-- ========== Section: Saved Words ========== -->
+            <StackPanel Margin="0,0,0,20">
+
+                <!-- Header -->
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" Grid.Column="0">
+                        <TextBlock Text="&#xE8FB;"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#22C55E"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0" />
+                        <TextBlock Text="Saved Words"
+                                   FontSize="16" FontWeight="SemiBold"
+                                   Foreground="White" />
+                    </StackPanel>
+                    <TextBlock x:Name="WordCountText"
+                               Grid.Column="1"
+                               Text="0 words"
+                               FontSize="11" FontWeight="Medium"
+                               Foreground="#6B7280"
+                               VerticalAlignment="Center" />
+                </Grid>
+
+                <TextBlock Text="These words will be suggested to the AI to improve recognition of names, brands, and technical terms."
+                           FontSize="12" Foreground="#6B7280"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,12" />
+
+                <!-- Add word row -->
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Background="#2D2D42" CornerRadius="8"
+                            Margin="0,0,8,0">
+                        <TextBox x:Name="NewWordInput"
+                                 Background="Transparent" BorderThickness="0"
+                                 Foreground="White" FontSize="13"
+                                 Padding="12,8"
+                                 VerticalAlignment="Center"
+                                 Text=""
+                                 Tag="Add a word or phrase..."
+                                 KeyDown="NewWordInput_KeyDown">
+                            <TextBox.Style>
+                                <Style TargetType="TextBox">
+                                    <Style.Triggers>
+                                        <Trigger Property="Text" Value="">
+                                            <Setter Property="Background">
+                                                <Setter.Value>
+                                                    <VisualBrush AlignmentX="Left" AlignmentY="Center" Stretch="None">
+                                                        <VisualBrush.Visual>
+                                                            <TextBlock Text="Add a word or phrase..."
+                                                                       Foreground="#4B5563"
+                                                                       FontSize="13"
+                                                                       Margin="12,0,0,0" />
+                                                        </VisualBrush.Visual>
+                                                    </VisualBrush>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBox.Style>
+                        </TextBox>
+                    </Border>
+
+                    <Button x:Name="AddWordButton"
+                            Grid.Column="1"
+                            Width="80" Height="36"
+                            Background="#22C55E"
+                            Foreground="White"
+                            FontSize="13" FontWeight="SemiBold"
+                            Cursor="Hand"
+                            Click="AddWordButton_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="btn" Background="#22C55E" CornerRadius="8"
+                                        Padding="12,8">
+                                    <TextBlock Text="Add"
+                                               FontSize="13" FontWeight="SemiBold"
+                                               Foreground="White"
+                                               HorizontalAlignment="Center" />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="btn" Property="Background" Value="#16A34A" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </Grid>
+
+                <!-- Word list container -->
+                <Border x:Name="WordListContainer" Background="#2D2D42" CornerRadius="12"
+                        BorderBrush="#14FFFFFF" BorderThickness="1">
+                    <!-- Empty state -->
+                    <StackPanel x:Name="EmptyWordsPanel" HorizontalAlignment="Center"
+                                Margin="0,24">
+                        <TextBlock Text="&#xE8FB;"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="24" Foreground="#374151"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,0,0,6" />
+                        <TextBlock Text="No saved words yet"
+                                   FontSize="12" Foreground="#6B7280"
+                                   HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Actual word list (shown when non-empty) -->
+                <Border x:Name="WordListBorder" Background="#2D2D42" CornerRadius="12"
+                        BorderBrush="#14FFFFFF" BorderThickness="1"
+                        Visibility="Collapsed">
+                    <ItemsControl x:Name="WordsItemsControl">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <Grid Margin="12,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0"
+                                                   Text="&#xE73E;"
+                                                   FontFamily="Segoe MDL2 Assets"
+                                                   FontSize="11" Foreground="#22C55E"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,8,0" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding}"
+                                                   FontSize="13" FontWeight="Medium"
+                                                   Foreground="White"
+                                                   VerticalAlignment="Center" />
+                                        <Button Grid.Column="2"
+                                                Tag="{Binding}"
+                                                Cursor="Hand"
+                                                Click="RemoveWord_Click">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="removeBorder" Background="Transparent"
+                                                            CornerRadius="4" Padding="4,2">
+                                                        <TextBlock Text="&#xE711;"
+                                                                   FontFamily="Segoe MDL2 Assets"
+                                                                   FontSize="12" Foreground="#6B7280"
+                                                                   VerticalAlignment="Center" />
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="removeBorder" Property="Background" Value="#3F3F5A" />
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                    </Grid>
+                                    <Rectangle Height="1" Fill="#0DFFFFFF"
+                                               Margin="36,0,12,0"
+                                               x:Name="Divider" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
+
+            </StackPanel>
+
+            <!-- ========== Section: Modal Configurations ========== -->
+            <StackPanel Margin="0,0,0,20">
+
+                <!-- Header -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Text="&#xE70B;"
+                               FontFamily="Segoe MDL2 Assets"
+                               FontSize="14" FontWeight="SemiBold"
+                               Foreground="#AF52DE"
+                               VerticalAlignment="Center"
+                               Margin="0,0,8,0" />
+                    <TextBlock Text="Modal Configurations"
+                               FontSize="16" FontWeight="SemiBold"
+                               Foreground="White" />
+                </StackPanel>
+
+                <TextBlock Text="Select a transcription style. This hint is sent to the AI with every recording."
+                           FontSize="12" Foreground="#6B7280"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,12" />
+
+                <!-- Config options list -->
+                <Border Background="#2D2D42" CornerRadius="12"
+                        BorderBrush="#14FFFFFF" BorderThickness="1">
+                    <StackPanel x:Name="ModalConfigPanel">
+                        <!-- Options generated in code-behind -->
+                    </StackPanel>
+                </Border>
+
+                <!-- Prompt preview -->
+                <Border x:Name="PromptPreviewBorder"
+                        Background="#15AF52DE" CornerRadius="8"
+                        Padding="10,8" Margin="0,10,0,0"
+                        Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE8F2;"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="11" Foreground="#AF52DE"
+                                   VerticalAlignment="Top"
+                                   Margin="0,1,6,0" />
+                        <TextBlock x:Name="PromptPreviewText"
+                                   FontSize="11" Foreground="#9CA3AF"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

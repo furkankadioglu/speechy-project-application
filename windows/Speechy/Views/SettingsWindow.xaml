@@ -173,6 +173,28 @@
                                 </ControlTemplate>
                             </Button.Template>
                         </Button>
+
+                        <!-- Prompt -->
+                        <Button x:Name="NavPrompt" Click="NavPrompt_Click" Cursor="Hand">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="navBorder" CornerRadius="8"
+                                            Padding="12,10" Margin="0,0,0,4">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE70B;"
+                                                       FontFamily="Segoe MDL2 Assets"
+                                                       FontSize="14" FontWeight="Medium"
+                                                       Width="20"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="Prompt"
+                                                       FontSize="13" FontWeight="Medium"
+                                                       VerticalAlignment="Center"
+                                                       Margin="10,0,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
                     </StackPanel>
                 </StackPanel>
             </DockPanel>
@@ -187,6 +209,7 @@
             <tabs:AdvancedTab x:Name="AdvancedTabContent" Visibility="Collapsed" />
             <tabs:HistoryTab x:Name="HistoryTabContent" Visibility="Collapsed" />
             <tabs:LicenseTab x:Name="LicenseTabContent" Visibility="Collapsed" />
+            <tabs:PromptTab x:Name="PromptTabContent" Visibility="Collapsed" />
         </Grid>
     </Grid>
 </Window>
