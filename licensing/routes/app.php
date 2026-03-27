@@ -17,6 +17,11 @@ function handle_app_route(string $method, string $path): bool
         return true;
     }
 
+    if ($method === 'GET' && $path === '/api/version/check') {
+        handle_version_check();
+        return true;
+    }
+
     return false;
 }
 
@@ -198,5 +203,38 @@ function handle_deactivate(): void
     json_response([
         'deactivated' => true,
         'message' => 'Device deactivated successfully',
+    ]);
+}
+
+function handle_version_check(): void
+{
+    $platform = sanitize_string($_GET['platform'] ?? '', 16);
+
+    if ($platform === '' || !in_array($platform, ['macos', 'windows', 'ios'], true)) {
+        json_error('platform query param required (macos, windows, ios)');
+    }
+
+    $pdo = get_db();
+    $stmt = $pdo->prepare('SELECT * FROM app_versions WHERE platform = :platform');
+    $stmt->execute(['platform' => $platform]);
+    $row = $stmt->fetch();
+
+    if (!$row) {
+        // Return safe defaults if row missing
+        json_response([
+            'platform'        => $platform,
+            'latest_version'  => '1.0.0',
+            'minimum_version' => '1.0.0',
+            'update_url'      => 'https://speechy.frkn.com.tr',
+        ]);
+        return;
+    }
+
+    json_response([
+        'platform'        => $row['platform'],
+        'latest_version'  => $row['latest_version'],
+        'minimum_version' => $row['minimum_version'],
+        'update_url'      => $row['update_url'] ?? 'https://speechy.frkn.com.tr',
+        'notes'           => $row['notes'],
     ]);
 }

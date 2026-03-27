@@ -47,6 +47,18 @@ function handle_admin_route(string $method, string $path): bool
         }
     }
 
+    // GET /api/admin/version — list all platform versions
+    if ($method === 'GET' && $path === '/api/admin/version') {
+        handle_admin_list_versions();
+        return true;
+    }
+
+    // PUT /api/admin/version — update a platform's version info
+    if ($method === 'PUT' && $path === '/api/admin/version') {
+        handle_admin_update_version();
+        return true;
+    }
+
     return false;
 }
 
@@ -351,5 +363,70 @@ function handle_admin_delete_license(int $id): void
     json_response([
         'revoked' => true,
         'license' => $license,
+    ]);
+}
+
+// ─── Version Management ──────────────────────────────────────────────────────
+
+function handle_admin_list_versions(): void
+{
+    $pdo = get_db();
+    $stmt = $pdo->query('SELECT * FROM app_versions ORDER BY platform');
+    $rows = $stmt->fetchAll();
+
+    json_response(['versions' => $rows]);
+}
+
+function handle_admin_update_version(): void
+{
+    $body = get_json_body();
+
+    $platform        = sanitize_string($body['platform']        ?? '', 16);
+    $latest_version  = sanitize_string($body['latest_version']  ?? '', 32);
+    $minimum_version = sanitize_string($body['minimum_version'] ?? '', 32);
+    $update_url      = sanitize_string($body['update_url']      ?? '', 512);
+    $notes           = sanitize_string($body['notes']           ?? '', 1024);
+
+    if ($platform === '' || !in_array($platform, ['macos', 'windows', 'ios'], true)) {
+        json_error('platform required (macos, windows, ios)');
+    }
+
+    if ($latest_version === '' || $minimum_version === '') {
+        json_error('latest_version and minimum_version are required');
+    }
+
+    // Validate semver-like format (e.g. 1.2.3)
+    $semver_re = '/^\d+\.\d+\.\d+$/';
+    if (!preg_match($semver_re, $latest_version) || !preg_match($semver_re, $minimum_version)) {
+        json_error('Versions must be in X.Y.Z format');
+    }
+
+    $pdo = get_db();
+
+    $stmt = $pdo->prepare('
+        INSERT INTO app_versions (platform, latest_version, minimum_version, update_url, notes, updated_at)
+        VALUES (:platform, :latest, :minimum, :url, :notes, NOW())
+        ON CONFLICT (platform) DO UPDATE SET
+            latest_version  = EXCLUDED.latest_version,
+            minimum_version = EXCLUDED.minimum_version,
+            update_url      = EXCLUDED.update_url,
+            notes           = EXCLUDED.notes,
+            updated_at      = NOW()
+        RETURNING *
+    ');
+
+    $stmt->execute([
+        'platform' => $platform,
+        'latest'   => $latest_version,
+        'minimum'  => $minimum_version,
+        'url'      => $update_url !== '' ? $update_url : null,
+        'notes'    => $notes !== '' ? $notes : null,
+    ]);
+
+    $row = $stmt->fetch();
+
+    json_response([
+        'updated' => true,
+        'version' => $row,
     ]);
 }

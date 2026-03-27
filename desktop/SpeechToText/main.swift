@@ -1417,6 +1417,179 @@ let supportedLanguages: [(code: String, name: String, flag: String)] = [
     ("th", "ไทย", "🇹🇭"),
 ]
 
+// MARK: - Version Manager
+
+class VersionManager {
+    static let shared = VersionManager()
+
+    private let baseURL = "https://speechy.frkn.com.tr"
+
+    var currentVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+    }
+
+    /// Compare two semver strings (X.Y.Z). Returns true if `a` < `b`.
+    func isVersion(_ a: String, lessThan b: String) -> Bool {
+        let aParts = a.split(separator: ".").compactMap { Int($0) }
+        let bParts = b.split(separator: ".").compactMap { Int($0) }
+        let count = max(aParts.count, bParts.count)
+        for i in 0..<count {
+            let av = i < aParts.count ? aParts[i] : 0
+            let bv = i < bParts.count ? bParts[i] : 0
+            if av < bv { return true }
+            if av > bv { return false }
+        }
+        return false
+    }
+
+    /// Checks the version endpoint and calls the handler on main thread if update is required.
+    func checkVersion(onUpdateRequired: @escaping (_ minimumVersion: String, _ latestVersion: String, _ updateURL: String) -> Void) {
+        guard let url = URL(string: "\(baseURL)/api/version/check?platform=macos") else { return }
+
+        let task = URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+            guard let self = self,
+                  let data = data,
+                  error == nil,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let minimumVersion = json["minimum_version"] as? String,
+                  let latestVersion  = json["latest_version"] as? String else {
+                log("[Speechy] Version check: skipped (network unavailable or parse error)")
+                return
+            }
+
+            let updateURL = json["update_url"] as? String ?? "https://speechy.frkn.com.tr"
+            log("[Speechy] Version check: current=\(self.currentVersion) latest=\(latestVersion) minimum=\(minimumVersion)")
+
+            if self.isVersion(self.currentVersion, lessThan: minimumVersion) {
+                log("[Speechy] Version check: BELOW MINIMUM — forcing update screen")
+                DispatchQueue.main.async {
+                    onUpdateRequired(minimumVersion, latestVersion, updateURL)
+                }
+            } else {
+                log("[Speechy] Version check: OK ✓")
+            }
+        }
+        task.resume()
+    }
+}
+
+// MARK: - Force Update View
+
+struct ForceUpdateView: View {
+    let currentVersion: String
+    let minimumVersion: String
+    let latestVersion: String
+    let updateURL: String
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                gradient: Gradient(colors: [Color(red: 0.07, green: 0.07, blue: 0.12), Color(red: 0.10, green: 0.07, blue: 0.16)]),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                // Icon
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(
+                            gradient: Gradient(colors: [Color(red: 1, green: 0.23, blue: 0.19), Color(red: 0.9, green: 0.1, blue: 0.1)]),
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 80, height: 80)
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 38, weight: .medium))
+                        .foregroundColor(.white)
+                }
+                .padding(.bottom, 24)
+
+                Text("Update Required")
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.bottom, 8)
+
+                Text("Version \(currentVersion) is no longer supported.\nPlease update to version \(minimumVersion) or later.")
+                    .font(.system(size: 14))
+                    .foregroundColor(.white.opacity(0.65))
+                    .multilineTextAlignment(.center)
+                    .padding(.bottom, 32)
+
+                // Version badges
+                HStack(spacing: 16) {
+                    VStack(spacing: 4) {
+                        Text("Current")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.4))
+                        Text(currentVersion)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(.red.opacity(0.9))
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(Color.red.opacity(0.12))
+                    .cornerRadius(10)
+
+                    Image(systemName: "arrow.right")
+                        .foregroundColor(.white.opacity(0.3))
+                        .font(.system(size: 14))
+
+                    VStack(spacing: 4) {
+                        Text("Latest")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.4))
+                        Text(latestVersion)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(.green.opacity(0.9))
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(Color.green.opacity(0.12))
+                    .cornerRadius(10)
+                }
+                .padding(.bottom, 32)
+
+                // Download button
+                Button(action: {
+                    if let url = URL(string: updateURL) {
+                        NSWorkspace.shared.open(url)
+                    }
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 16, weight: .medium))
+                        Text("Download Update")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 40)
+                    .padding(.vertical, 14)
+                    .background(
+                        LinearGradient(
+                            gradient: Gradient(colors: [Color.blue, Color.purple]),
+                            startPoint: .leading, endPoint: .trailing
+                        )
+                    )
+                    .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                Text("You can't use Speechy until you update.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.3))
+                    .padding(.bottom, 20)
+            }
+            .frame(maxWidth: 400)
+            .padding(.horizontal, 40)
+        }
+    }
+}
+
 // MARK: - Settings Manager
 class SettingsManager: ObservableObject {
     static let shared = SettingsManager()
@@ -4073,6 +4246,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Start hourly license enforcement (checks every 1 hour, first check at 30s)
         LicenseManager.shared.startHourlyLicenseCheck()
 
+        // Version check — blocks app if below minimum_version
+        VersionManager.shared.checkVersion { [weak self] minVersion, latestVersion, updateURL in
+            self?.showForceUpdateScreen(
+                minimumVersion: minVersion,
+                latestVersion: latestVersion,
+                updateURL: updateURL
+            )
+        }
+
         // Check permissions on every launch
         let perms = checkPermissions()
         log("[Speechy] Permission check - Accessibility: \(perms.accessibility), Microphone: \(perms.microphone)")
@@ -4106,6 +4288,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     var permissionWindow: NSWindow?
+    var forceUpdateWindow: NSWindow?
+
+    func showForceUpdateScreen(minimumVersion: String, latestVersion: String, updateURL: String) {
+        // If already showing, just bring to front
+        if let existing = forceUpdateWindow {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 560),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+
+        let view = ForceUpdateView(
+            currentVersion: VersionManager.shared.currentVersion,
+            minimumVersion: minimumVersion,
+            latestVersion: latestVersion,
+            updateURL: updateURL
+        )
+
+        window.contentView = NSHostingView(rootView: view)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.center()
+        window.isReleasedWhenClosed = false
+        // Keep above everything — user cannot dismiss or bypass
+        window.level = .screenSaver
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // Prevent closing with Cmd+W
+        window.standardWindowButton(.closeButton)?.isHidden = true
+
+        forceUpdateWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        log("[Speechy] Force update screen shown — current: \(VersionManager.shared.currentVersion) minimum: \(minimumVersion)")
+    }
+
 
     func showPermissionCheck(accessibility: Bool, microphone: Bool) {
         let window = NSWindow(
