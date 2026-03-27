@@ -166,6 +166,24 @@ public partial class App : Application
 
         splash.Close();
 
+        // Version check — runs in background, blocks app if current version is below minimum
+        await Task.Run(async () =>
+        {
+            await VersionManager.Instance.CheckVersionAsync((minVer, latestVer, updateUrl) =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    var win = new Views.ForceUpdateWindow(
+                        VersionManager.Instance.CurrentVersion,
+                        minVer,
+                        latestVer,
+                        updateUrl
+                    );
+                    win.ShowDialog();
+                });
+            });
+        });
+
         // Install keyboard hook and register global hotkey
         _hotkeyManager!.Install();
         RegisterSettingsHotkey();
@@ -485,6 +503,9 @@ public partial class App : Application
 
                 if (result != null)
                 {
+                    // Apply post-processing based on selected ModalConfig
+                    result = TextPostProcessor.Apply(result, settings.ModalConfig);
+
                     Log.Info($"Transcription result: {result}");
 
                     // Add to history

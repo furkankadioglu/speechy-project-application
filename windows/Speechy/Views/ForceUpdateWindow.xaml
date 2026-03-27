@@ -1,0 +1,174 @@
+<Window x:Class="Speechy.Views.ForceUpdateWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Speechy - Update Required"
+        Width="672" Height="500"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        ResizeMode="NoResize"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="True">
+
+    <Border CornerRadius="16" ClipToBounds="True" Background="#1E1E2E">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Center content -->
+            <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+
+                <!-- Red circle with upload/update arrow icon -->
+                <Grid Width="80" Height="80" HorizontalAlignment="Center" Margin="0,0,0,20">
+                    <Ellipse>
+                        <Ellipse.Fill>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#EF4444" Offset="0" />
+                                <GradientStop Color="#DC2626" Offset="1" />
+                            </LinearGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+                    <!-- Upload arrow icon (Segoe MDL2 Assets: Upload = E74A) -->
+                    <TextBlock Text="&#xE74A;"
+                               FontFamily="Segoe MDL2 Assets"
+                               FontSize="34"
+                               Foreground="White"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Grid>
+
+                <!-- Title -->
+                <TextBlock Text="Update Required"
+                           FontSize="28"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,12" />
+
+                <!-- Subtitle with version info -->
+                <TextBlock x:Name="SubtitleText"
+                           FontSize="14"
+                           Foreground="#A0A0B8"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           MaxWidth="480"
+                           Margin="0,0,0,32" />
+
+                <!-- Version badges row -->
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Center"
+                            Margin="0,0,0,36">
+
+                    <!-- Current version badge (red-tinted) -->
+                    <Border Background="#2D1A1A"
+                            BorderBrush="#5C2A2A"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="16,10">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="Current"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="#EF4444"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,0,0,4" />
+                            <TextBlock x:Name="CurrentVersionText"
+                                       FontSize="18"
+                                       FontWeight="Bold"
+                                       Foreground="#F87171"
+                                       HorizontalAlignment="Center"
+                                       FontFamily="Consolas" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Arrow -->
+                    <TextBlock Text="&#xE76C;"
+                               FontFamily="Segoe MDL2 Assets"
+                               FontSize="20"
+                               Foreground="#6B6B80"
+                               VerticalAlignment="Center"
+                               Margin="20,0" />
+
+                    <!-- Latest version badge (green-tinted) -->
+                    <Border Background="#1A2D1A"
+                            BorderBrush="#2A5C2A"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="16,10">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="Latest"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="#22C55E"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,0,0,4" />
+                            <TextBlock x:Name="LatestVersionText"
+                                       FontSize="18"
+                                       FontWeight="Bold"
+                                       Foreground="#4ADE80"
+                                       HorizontalAlignment="Center"
+                                       FontFamily="Consolas" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Download button -->
+                <Button x:Name="DownloadButton"
+                        Width="280" Height="48"
+                        Click="DownloadButton_Click">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="ButtonBorder" CornerRadius="10" Padding="0">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#3B82F6" Offset="0" />
+                                        <GradientStop Color="#8B5CF6" Offset="1" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <StackPanel Orientation="Horizontal"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center">
+                                    <TextBlock Text="&#xE74A;"
+                                               FontFamily="Segoe MDL2 Assets"
+                                               FontSize="16"
+                                               Foreground="White"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,10,0" />
+                                    <TextBlock Text="Download Update"
+                                               FontSize="16"
+                                               FontWeight="SemiBold"
+                                               Foreground="White"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.85" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.7" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+
+            </StackPanel>
+
+            <!-- Footer -->
+            <StackPanel Grid.Row="3" HorizontalAlignment="Center" Margin="0,0,0,28">
+                <TextBlock Text="You can't use Speechy until you update."
+                           FontSize="12"
+                           Foreground="#4B4B60"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
+
+        </Grid>
+    </Border>
+</Window>

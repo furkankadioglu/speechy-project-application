@@ -86,19 +86,19 @@
 
                     <!-- Navigation Items -->
                     <StackPanel Margin="8,0">
-                        <!-- Settings -->
+                        <!-- Hot Keys -->
                         <Button x:Name="NavSettings" Click="NavSettings_Click" Cursor="Hand">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
                                     <Border x:Name="navBorder" CornerRadius="8"
                                             Padding="12,10" Margin="0,0,0,4">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="&#xE713;"
+                                            <TextBlock Text="&#xE765;"
                                                        FontFamily="Segoe MDL2 Assets"
                                                        FontSize="14" FontWeight="Medium"
                                                        Width="20"
                                                        VerticalAlignment="Center" />
-                                            <TextBlock Text="Settings"
+                                            <TextBlock Text="Hot Keys"
                                                        FontSize="13" FontWeight="Medium"
                                                        VerticalAlignment="Center"
                                                        Margin="10,0,0,0" />
@@ -121,6 +121,28 @@
                                                        Width="20"
                                                        VerticalAlignment="Center" />
                                             <TextBlock Text="Advanced"
+                                                       FontSize="13" FontWeight="Medium"
+                                                       VerticalAlignment="Center"
+                                                       Margin="10,0,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+
+                        <!-- Prompt -->
+                        <Button x:Name="NavPrompt" Click="NavPrompt_Click" Cursor="Hand">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="navBorder" CornerRadius="8"
+                                            Padding="12,10" Margin="0,0,0,4">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE70B;"
+                                                       FontFamily="Segoe MDL2 Assets"
+                                                       FontSize="14" FontWeight="Medium"
+                                                       Width="20"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="Prompt"
                                                        FontSize="13" FontWeight="Medium"
                                                        VerticalAlignment="Center"
                                                        Margin="10,0,0,0" />
@@ -174,19 +196,41 @@
                             </Button.Template>
                         </Button>
 
-                        <!-- Prompt -->
-                        <Button x:Name="NavPrompt" Click="NavPrompt_Click" Cursor="Hand">
+                        <!-- Other Settings -->
+                        <Button x:Name="NavOtherSettings" Click="NavOtherSettings_Click" Cursor="Hand">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
                                     <Border x:Name="navBorder" CornerRadius="8"
                                             Padding="12,10" Margin="0,0,0,4">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="&#xE70B;"
+                                            <TextBlock Text="&#xE713;"
                                                        FontFamily="Segoe MDL2 Assets"
                                                        FontSize="14" FontWeight="Medium"
                                                        Width="20"
                                                        VerticalAlignment="Center" />
-                                            <TextBlock Text="Prompt"
+                                            <TextBlock Text="Other Settings"
+                                                       FontSize="13" FontWeight="Medium"
+                                                       VerticalAlignment="Center"
+                                                       Margin="10,0,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+
+                        <!-- Logs -->
+                        <Button x:Name="NavLogs" Click="NavLogs_Click" Cursor="Hand">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="navBorder" CornerRadius="8"
+                                            Padding="12,10" Margin="0,0,0,4">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE756;"
+                                                       FontFamily="Segoe MDL2 Assets"
+                                                       FontSize="14" FontWeight="Medium"
+                                                       Width="20"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="Logs"
                                                        FontSize="13" FontWeight="Medium"
                                                        VerticalAlignment="Center"
                                                        Margin="10,0,0,0" />
@@ -207,9 +251,11 @@
         <Grid Grid.Column="2">
             <tabs:SettingsTab x:Name="SettingsTabContent" Visibility="Visible" />
             <tabs:AdvancedTab x:Name="AdvancedTabContent" Visibility="Collapsed" />
+            <tabs:PromptTab x:Name="PromptTabContent" Visibility="Collapsed" />
             <tabs:HistoryTab x:Name="HistoryTabContent" Visibility="Collapsed" />
             <tabs:LicenseTab x:Name="LicenseTabContent" Visibility="Collapsed" />
-            <tabs:PromptTab x:Name="PromptTabContent" Visibility="Collapsed" />
+            <tabs:OtherSettingsTab x:Name="OtherSettingsTabContent" Visibility="Collapsed" />
+            <tabs:LogsTab x:Name="LogsTabContent" Visibility="Collapsed" />
         </Grid>
     </Grid>
 </Window>

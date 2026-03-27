@@ -309,6 +309,133 @@ enum ModalConfigType: String, Codable, CaseIterable {
     }
 }
 
+// MARK: - Localization Manager
+
+class LocalizationManager {
+    static let shared = LocalizationManager()
+
+    let supportedLanguages: [(code: String, nativeName: String, flag: String)] = [
+        ("en", "English", "🇬🇧"),
+        ("tr", "Türkçe", "🇹🇷"),
+        ("pt", "Português", "🇧🇷"),
+        ("zh", "中文", "🇨🇳"),
+        ("es", "Español", "🇪🇸"),
+        ("ru", "Русский", "🇷🇺"),
+        ("uk", "Українська", "🇺🇦"),
+        ("pl", "Polski", "🇵🇱"),
+    ]
+
+    func loc(_ key: String) -> String {
+        let lang = UserDefaults.standard.string(forKey: "appLanguage") ?? "en"
+        return translations[lang]?[key] ?? translations["en"]?[key] ?? key
+    }
+
+    private let translations: [String: [String: String]] = [
+        "en": [
+            "nav.hotkeys": "Hot Keys",
+            "nav.advanced": "Advanced",
+            "nav.prompt": "Prompt",
+            "nav.history": "History",
+            "nav.license": "License",
+            "nav.other": "Other Settings",
+            "nav.logs": "Logs",
+            "nav.quit": "Quit",
+            "section.app_language": "App Language",
+            "other.language_desc": "Select the language for the user interface.",
+        ],
+        "tr": [
+            "nav.hotkeys": "Kısayollar",
+            "nav.advanced": "Gelişmiş",
+            "nav.prompt": "Komut",
+            "nav.history": "Geçmiş",
+            "nav.license": "Lisans",
+            "nav.other": "Diğer Ayarlar",
+            "nav.logs": "Günlükler",
+            "nav.quit": "Çıkış",
+            "section.app_language": "Uygulama Dili",
+            "other.language_desc": "Kullanıcı arayüzü dilini seçin.",
+        ],
+        "pt": [
+            "nav.hotkeys": "Teclas de Atalho",
+            "nav.advanced": "Avançado",
+            "nav.prompt": "Prompt",
+            "nav.history": "Histórico",
+            "nav.license": "Licença",
+            "nav.other": "Outras Config.",
+            "nav.logs": "Registros",
+            "nav.quit": "Sair",
+            "section.app_language": "Idioma do App",
+            "other.language_desc": "Selecione o idioma da interface.",
+        ],
+        "zh": [
+            "nav.hotkeys": "快捷键",
+            "nav.advanced": "高级",
+            "nav.prompt": "提示词",
+            "nav.history": "历史",
+            "nav.license": "许可证",
+            "nav.other": "其他设置",
+            "nav.logs": "日志",
+            "nav.quit": "退出",
+            "section.app_language": "应用语言",
+            "other.language_desc": "选择用户界面语言。",
+        ],
+        "es": [
+            "nav.hotkeys": "Teclas de Acceso",
+            "nav.advanced": "Avanzado",
+            "nav.prompt": "Prompt",
+            "nav.history": "Historial",
+            "nav.license": "Licencia",
+            "nav.other": "Otros Ajustes",
+            "nav.logs": "Registros",
+            "nav.quit": "Salir",
+            "section.app_language": "Idioma de la App",
+            "other.language_desc": "Seleccione el idioma de la interfaz.",
+        ],
+        "ru": [
+            "nav.hotkeys": "Горячие клавиши",
+            "nav.advanced": "Расширенные",
+            "nav.prompt": "Подсказки",
+            "nav.history": "История",
+            "nav.license": "Лицензия",
+            "nav.other": "Настройки",
+            "nav.logs": "Журналы",
+            "nav.quit": "Выйти",
+            "section.app_language": "Язык приложения",
+            "other.language_desc": "Выберите язык интерфейса.",
+        ],
+        "uk": [
+            "nav.hotkeys": "Гарячі клавіші",
+            "nav.advanced": "Розширені",
+            "nav.prompt": "Підказки",
+            "nav.history": "Історія",
+            "nav.license": "Ліцензія",
+            "nav.other": "Інші налаштування",
+            "nav.logs": "Журнали",
+            "nav.quit": "Вийти",
+            "section.app_language": "Мова програми",
+            "other.language_desc": "Виберіть мову інтерфейсу.",
+        ],
+        "pl": [
+            "nav.hotkeys": "Skróty klawiszowe",
+            "nav.advanced": "Zaawansowane",
+            "nav.prompt": "Podpowiedź",
+            "nav.history": "Historia",
+            "nav.license": "Licencja",
+            "nav.other": "Inne ustawienia",
+            "nav.logs": "Dzienniki",
+            "nav.quit": "Wyjdź",
+            "section.app_language": "Język aplikacji",
+            "other.language_desc": "Wybierz język interfejsu użytkownika.",
+        ],
+    ]
+}
+
+// Global shorthand — works because SettingsManager is @ObservedObject in views,
+// so changing appLanguage triggers re-render and loc() picks up new language.
+func loc(_ key: String) -> String {
+    LocalizationManager.shared.loc(key)
+}
+
 // MARK: - License Manager
 class LicenseManager: ObservableObject {
     static let shared = LicenseManager()
@@ -1613,6 +1740,7 @@ class SettingsManager: ObservableObject {
     @Published var isTTSEnabled: Bool
     @Published var savedWords: [String]
     @Published var modalConfig: ModalConfigType
+    @Published var appLanguage: String
 
     /// When true, hotkey triggers are suppressed (user is recording a new shortcut in settings)
     var isCapturingShortcut = false
@@ -1736,6 +1864,9 @@ class SettingsManager: ObservableObject {
         let rawConfig = defaults.string(forKey: "modalConfig") ?? "default"
         _modalConfig = Published(initialValue: ModalConfigType(rawValue: rawConfig) ?? .default)
 
+        // App language: load from UserDefaults
+        _appLanguage = Published(initialValue: defaults.string(forKey: "appLanguage") ?? "en")
+
         // Auto-save and notify on changes
         $slots.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
@@ -1763,6 +1894,8 @@ class SettingsManager: ObservableObject {
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
         $modalConfig.dropFirst()
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
+        $appLanguage.dropFirst()
+            .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
     }
 
     #if TESTING
@@ -1779,6 +1912,10 @@ class SettingsManager: ObservableObject {
         _waveDivisor = Published(initialValue: 1.0)
         _pauseMediaDuringRecording = Published(initialValue: true)
         _saveAudioRecordings = Published(initialValue: false)
+        _isTTSEnabled = Published(initialValue: false)
+        _savedWords = Published(initialValue: [])
+        _modalConfig = Published(initialValue: .default)
+        _appLanguage = Published(initialValue: "en")
     }
     #endif
 
@@ -1815,6 +1952,7 @@ class SettingsManager: ObservableObject {
         defaults.set(isTTSEnabled, forKey: "ttsEnabled")
         if let data = try? JSONEncoder().encode(savedWords) { defaults.set(data, forKey: "savedWords") }
         defaults.set(modalConfig.rawValue, forKey: "modalConfig")
+        defaults.set(appLanguage, forKey: "appLanguage")
     }
 
     /// Builds the whisper --prompt string from saved words + modal config hint.
@@ -2294,40 +2432,46 @@ struct SettingsView: View {
                 // Navigation Items
                 VStack(spacing: 4) {
                     SidebarItem(
-                        title: "Settings",
-                        icon: "gearshape.fill",
+                        title: loc("nav.hotkeys"),
+                        icon: "keyboard",
                         isSelected: selectedTab == 0,
                         action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 0 } }
                     )
                     SidebarItem(
-                        title: "Advanced",
+                        title: loc("nav.advanced"),
                         icon: "slider.horizontal.3",
                         isSelected: selectedTab == 1,
                         action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 1 } }
                     )
                     SidebarItem(
-                        title: "History",
-                        icon: "clock.fill",
+                        title: loc("nav.prompt"),
+                        icon: "wand.and.rays",
                         isSelected: selectedTab == 2,
                         action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 2 } }
                     )
                     SidebarItem(
-                        title: "License",
-                        icon: "key.fill",
+                        title: loc("nav.history"),
+                        icon: "clock.fill",
                         isSelected: selectedTab == 3,
                         action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 3 } }
                     )
                     SidebarItem(
-                        title: "Logs",
-                        icon: "terminal.fill",
+                        title: loc("nav.license"),
+                        icon: "key.fill",
                         isSelected: selectedTab == 4,
                         action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 4 } }
                     )
                     SidebarItem(
-                        title: "Prompt",
-                        icon: "wand.and.rays",
+                        title: loc("nav.other"),
+                        icon: "gearshape.2",
                         isSelected: selectedTab == 5,
                         action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 5 } }
+                    )
+                    SidebarItem(
+                        title: loc("nav.logs"),
+                        icon: "terminal.fill",
+                        isSelected: selectedTab == 6,
+                        action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = 6 } }
                     )
                 }
                 .padding(.horizontal, 8)
@@ -2339,7 +2483,7 @@ struct SettingsView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "power")
                             .font(.system(size: 12, weight: .semibold))
-                        Text("Quit")
+                        Text(loc("nav.quit"))
                             .font(.system(size: 12, weight: .medium))
                     }
                     .foregroundColor(.red.opacity(0.8))
@@ -2364,17 +2508,19 @@ struct SettingsView: View {
             VStack(spacing: 0) {
                 switch selectedTab {
                 case 0:
-                    SettingsTab(settings: settings)
+                    HotKeysTab(settings: settings)
                 case 1:
                     AdvancedTab(settings: settings)
                 case 2:
-                    HistoryTab(settings: settings)
-                case 3:
-                    LicenseTab()
-                case 4:
-                    LogsTab()
-                default:
                     PromptTab(settings: settings)
+                case 3:
+                    HistoryTab(settings: settings)
+                case 4:
+                    LicenseTab()
+                case 5:
+                    OtherSettingsTab(settings: settings)
+                default:
+                    LogsTab()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -2383,7 +2529,7 @@ struct SettingsView: View {
     }
 }
 
-struct SettingsTab: View {
+struct HotKeysTab: View {
     @ObservedObject var settings: SettingsManager
 
     private let accentColors: [Color] = [.blue, .green, .orange, .purple, .red, .cyan, .pink, .yellow, .mint, .teal, .indigo, .brown]
@@ -3043,6 +3189,68 @@ struct ModalConfigRow: View {
             .background(isSelected ? Color.purple.opacity(0.08) : Color(NSColor.controlBackgroundColor))
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Other Settings Tab
+
+struct OtherSettingsTab: View {
+    @ObservedObject var settings: SettingsManager
+    private let l10n = LocalizationManager.shared
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                languageSection
+            }
+            .padding()
+        }
+    }
+
+    private var languageSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(icon: "globe", title: loc("section.app_language"), color: .blue)
+
+            Text(loc("other.language_desc"))
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+
+            VStack(spacing: 0) {
+                ForEach(l10n.supportedLanguages, id: \.code) { lang in
+                    let isSelected = settings.appLanguage == lang.code
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            settings.appLanguage = lang.code
+                        }
+                    }) {
+                        HStack(spacing: 12) {
+                            Text(lang.flag)
+                                .font(.system(size: 20))
+                                .frame(width: 28)
+                            Text(lang.nativeName)
+                                .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                                .foregroundColor(.primary)
+                            Spacer()
+                            if isSelected {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(isSelected ? Color.blue.opacity(0.08) : Color(NSColor.controlBackgroundColor))
+                    }
+                    .buttonStyle(.plain)
+
+                    if lang.code != l10n.supportedLanguages.last?.code {
+                        Divider().padding(.leading, 54)
+                    }
+                }
+            }
+            .cornerRadius(12)
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(NSColor.separatorColor), lineWidth: 1))
+        }
     }
 }
 
@@ -5374,8 +5582,9 @@ class WhisperTranscriber {
                 let filteredText = self.filterNonSpeech(rawText)
 
                 if let text = filteredText {
-                    log("[Speechy] Filtered result: \(text.prefix(80))")
-                    completion(text)
+                    let finalText = SettingsManager.shared.modalConfig == .paragraphs ? self.applyParagraphBreaks(text) : text
+                    log("[Speechy] Filtered result: \(finalText.prefix(80))")
+                    completion(finalText)
                 } else {
                     log("[Speechy] Result filtered out (non-speech)")
                     completion(nil)
@@ -5385,6 +5594,43 @@ class WhisperTranscriber {
                 completion(nil)
             }
         }
+    }
+
+    private func applyParagraphBreaks(_ text: String) -> String {
+        // Split into sentences at .!? followed by whitespace
+        var sentences: [String] = []
+        var current = ""
+        let chars = Array(text)
+        var i = 0
+        while i < chars.count {
+            let c = chars[i]
+            current.append(c)
+            let isTerminator = c == "." || c == "!" || c == "?" || c == "。" || c == "！" || c == "？"
+            let nextIsSpace = (i + 1 < chars.count) && chars[i + 1].isWhitespace
+            let isLast = i == chars.count - 1
+            if isTerminator && (nextIsSpace || isLast) {
+                let s = current.trimmingCharacters(in: .whitespaces)
+                if !s.isEmpty { sentences.append(s) }
+                current = ""
+            }
+            i += 1
+        }
+        let remaining = current.trimmingCharacters(in: .whitespaces)
+        if !remaining.isEmpty { sentences.append(remaining) }
+
+        if sentences.count <= 1 { return text }
+
+        // Group every 3 sentences into a paragraph
+        let groupSize = 3
+        var paragraphs: [String] = []
+        var idx = 0
+        while idx < sentences.count {
+            let end = min(idx + groupSize, sentences.count)
+            let group = sentences[idx..<end].joined(separator: " ")
+            paragraphs.append(group)
+            idx += groupSize
+        }
+        return paragraphs.joined(separator: "\n\n")
     }
 }
 

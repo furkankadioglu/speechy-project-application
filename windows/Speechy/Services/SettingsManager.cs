@@ -30,6 +30,7 @@ public class SettingsData
     public string? StoredLicenseKey { get; set; }
     public bool CachedLicenseStatus { get; set; } = false;
     public double LastLicenseVerified { get; set; } = 0;
+    public string AppLanguage { get; set; } = "en";
 }
 
 /// <summary>
@@ -65,6 +66,7 @@ public sealed class SettingsManager : INotifyPropertyChanged
     private bool _pauseMediaDuringRecording;
     private List<string> _savedWords = new();
     private Models.ModalConfig _modalConfig;
+    private string _appLanguage = "en";
 
     private SettingsManager()
     {
@@ -146,6 +148,12 @@ public sealed class SettingsManager : INotifyPropertyChanged
     {
         get => _modalConfig;
         set { _modalConfig = value; OnPropertyChanged(); OnPropertyChanged(nameof(WhisperPrompt)); SaveDebounced(); }
+    }
+
+    public string AppLanguage
+    {
+        get => _appLanguage;
+        set { _appLanguage = value; OnPropertyChanged(); SaveDebounced(); }
     }
 
     /// <summary>
@@ -341,6 +349,7 @@ public sealed class SettingsManager : INotifyPropertyChanged
                 PauseMediaDuringRecording = _pauseMediaDuringRecording,
                 SavedWords = _savedWords,
                 ModalConfig = _modalConfig.RawValue(),
+                AppLanguage = _appLanguage,
             };
 
             // Preserve license data
@@ -391,6 +400,7 @@ public sealed class SettingsManager : INotifyPropertyChanged
             _pauseMediaDuringRecording = data.PauseMediaDuringRecording;
             _savedWords = data.SavedWords ?? new List<string>();
             _modalConfig = Models.ModalConfigExtensions.FromRawValue(data.ModalConfig);
+            _appLanguage = data.AppLanguage ?? "en";
 
             Log.Info("Settings loaded");
         }
