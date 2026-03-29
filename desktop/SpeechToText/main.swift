@@ -451,6 +451,7 @@ class LicenseManager: ObservableObject {
     @Published var expiresAt: String = ""
 
     private var hourlyLicenseTimer: Timer?
+    private var _machineIDCache: String?
 
     var storedLicenseKey: String? {
         get { UserDefaults.standard.string(forKey: licenseKeyKey) }
@@ -464,7 +465,14 @@ class LicenseManager: ObservableObject {
     }
 
     var machineID: String {
-        // Use hardware UUID as unique machine identifier
+        // In-memory cache: avoids repeated subprocess spawns during the same session
+        if let cached = _machineIDCache { return cached }
+        // UserDefaults cache: avoids ioreg on every launch
+        if let saved = UserDefaults.standard.string(forKey: "speechy_machine_id") {
+            _machineIDCache = saved
+            return saved
+        }
+        // First launch: query hardware UUID via ioreg (background-thread safe, but only called once)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/ioreg")
         process.arguments = ["-rd1", "-c", "IOPlatformExpertDevice"]
@@ -474,16 +482,18 @@ class LicenseManager: ObservableObject {
         process.waitUntilExit()
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         let output = String(data: data, encoding: .utf8) ?? ""
-        // Extract IOPlatformUUID
         if let range = output.range(of: "IOPlatformUUID\" = \"") {
             let start = range.upperBound
             if let end = output[start...].firstIndex(of: "\"") {
-                return String(output[start..<end])
+                let id = String(output[start..<end])
+                _machineIDCache = id
+                UserDefaults.standard.set(id, forKey: "speechy_machine_id")
+                return id
             }
         }
-        // Fallback: generate and persist a UUID
-        if let saved = UserDefaults.standard.string(forKey: "speechy_machine_id") { return saved }
+        // Final fallback: generate and persist a UUID
         let newID = UUID().uuidString
+        _machineIDCache = newID
         UserDefaults.standard.set(newID, forKey: "speechy_machine_id")
         return newID
     }
@@ -5376,8 +5386,16 @@ class LocalTTSPlayer {
 
 // MARK: - Whisper Transcriber
 class WhisperTranscriber {
-    // Resolved at runtime: Apple Silicon uses /opt/homebrew, Intel uses /usr/local
+    // Cached at first use — subprocess discovery is expensive (spawns /usr/bin/which)
+    private var _whisperPathCache: String?
     private var whisperPath: String {
+        if let cached = _whisperPathCache { return cached }
+        let resolved = resolveWhisperPath()
+        _whisperPathCache = resolved
+        return resolved
+    }
+
+    private func resolveWhisperPath() -> String {
         // Strategy 1: use PATH-based discovery via /usr/bin/which
         if let found = findWhisperViaPATH() {
             log("[Speechy] whisper-cli found via PATH: \(found)")
