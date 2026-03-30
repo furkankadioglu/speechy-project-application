@@ -3253,25 +3253,30 @@ struct OtherSettingsTab: View {
                 VStack(alignment: .leading, spacing: 12) {
                     SectionHeader(icon: "macwindow", title: loc("section.dock"), color: .purple)
 
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(loc("other.show_in_dock"))
-                                .font(.system(size: 13, weight: .medium))
-                            Text(loc("other.show_in_dock_desc"))
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
+                    Button(action: { settings.showInDock.toggle() }) {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(loc("other.show_in_dock"))
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(.primary)
+                                Text(loc("other.show_in_dock_desc"))
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: settings.showInDock ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 18))
+                                .foregroundColor(settings.showInDock ? .blue : Color(NSColor.tertiaryLabelColor))
                         }
-                        Spacer()
-                        Toggle(isOn: $settings.showInDock) { EmptyView() }
-                            .toggleStyle(.switch)
+                        .padding(14)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                        )
                     }
-                    .padding(14)
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(12)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color(NSColor.separatorColor), lineWidth: 1)
-                    )
+                    .buttonStyle(.plain)
                 }
 
                 // ── Language ───────────────────────────────────────
