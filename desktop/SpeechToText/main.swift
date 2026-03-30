@@ -6,6 +6,8 @@ import Carbon.HIToolbox
 import Combine
 import ServiceManagement
 
+let APP_BUILD = "2026.03.31-B"
+
 // MARK: - Logger
 
 class LogManager: ObservableObject {
@@ -2340,6 +2342,10 @@ struct SplashView: View {
                     Text("Loading...")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white.opacity(0.5))
+
+                    Text("Build \(APP_BUILD)")
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.3))
                 }
                 .padding(.bottom, 60)
             }
@@ -2574,6 +2580,7 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: 672, height: 816)
+        .id(settings.appLanguage)
     }
 }
 
