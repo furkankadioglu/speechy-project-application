@@ -3258,7 +3258,7 @@ struct OtherSettingsTab: View {
 
     private var dockSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(icon: "dock.rectangle", title: loc("section.dock"), color: .indigo)
+            SectionHeader(icon: "macwindow", title: loc("section.dock"), color: .indigo)
 
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
