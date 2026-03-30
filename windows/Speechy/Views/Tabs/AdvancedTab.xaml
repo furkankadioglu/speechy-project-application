@@ -114,90 +114,46 @@
                 </Border>
             </StackPanel>
 
-            <!-- ========== Section: Waveform Sensitivity ========== -->
+            <!-- ========== Section: Waveform Sensitivity — HIDDEN, uncomment to restore ==========
             <StackPanel Margin="0,0,0,20">
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                    <TextBlock Text="&#xEC61;"
-                               FontFamily="Segoe MDL2 Assets"
-                               FontSize="14" FontWeight="SemiBold"
-                               Foreground="#22C55E"
-                               VerticalAlignment="Center"
-                               Margin="0,0,8,0" />
-                    <TextBlock Text="Waveform Sensitivity"
-                               FontSize="16" FontWeight="SemiBold"
-                               Foreground="White" />
+                    <TextBlock Text="&#xEC61;" FontFamily="Segoe MDL2 Assets" FontSize="14" FontWeight="SemiBold" Foreground="#22C55E" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock Text="Waveform Sensitivity" FontSize="16" FontWeight="SemiBold" Foreground="White" />
                 </StackPanel>
-
                 <Border Background="#2D2D42" CornerRadius="12" Padding="16">
                     <StackPanel>
-                        <!-- Multiplier -->
                         <StackPanel Margin="0,0,0,14">
                             <Grid Margin="0,0,0,6">
-                                <TextBlock Text="Multiplier"
-                                           FontSize="13" Foreground="White"
-                                           HorizontalAlignment="Left" />
-                                <Border HorizontalAlignment="Right"
-                                        Background="#2622C55E" CornerRadius="6"
-                                        Padding="10,4">
-                                    <TextBlock x:Name="MultiplierValueText"
-                                               FontSize="13" FontWeight="Bold"
-                                               Foreground="#22C55E" />
+                                <TextBlock Text="Multiplier" FontSize="13" Foreground="White" HorizontalAlignment="Left" />
+                                <Border HorizontalAlignment="Right" Background="#2622C55E" CornerRadius="6" Padding="10,4">
+                                    <TextBlock x:Name="MultiplierValueText" FontSize="13" FontWeight="Bold" Foreground="#22C55E" />
                                 </Border>
                             </Grid>
-                            <Slider x:Name="MultiplierSlider"
-                                    Minimum="100" Maximum="2000" TickFrequency="50"
-                                    IsSnapToTickEnabled="True"
-                                    ValueChanged="MultiplierSlider_ValueChanged" />
+                            <Slider x:Name="MultiplierSlider" Minimum="100" Maximum="2000" TickFrequency="50" IsSnapToTickEnabled="True" ValueChanged="MultiplierSlider_ValueChanged" />
                         </StackPanel>
-
-                        <!-- Exponent -->
                         <StackPanel Margin="0,0,0,14">
                             <Grid Margin="0,0,0,6">
-                                <TextBlock Text="Exponent"
-                                           FontSize="13" Foreground="White"
-                                           HorizontalAlignment="Left" />
-                                <Border HorizontalAlignment="Right"
-                                        Background="#2622C55E" CornerRadius="6"
-                                        Padding="10,4">
-                                    <TextBlock x:Name="ExponentValueText"
-                                               FontSize="13" FontWeight="Bold"
-                                               Foreground="#22C55E" />
+                                <TextBlock Text="Exponent" FontSize="13" Foreground="White" HorizontalAlignment="Left" />
+                                <Border HorizontalAlignment="Right" Background="#2622C55E" CornerRadius="6" Padding="10,4">
+                                    <TextBlock x:Name="ExponentValueText" FontSize="13" FontWeight="Bold" Foreground="#22C55E" />
                                 </Border>
                             </Grid>
-                            <Slider x:Name="ExponentSlider"
-                                    Minimum="0.05" Maximum="0.5"
-                                    TickFrequency="0.01"
-                                    IsSnapToTickEnabled="True"
-                                    ValueChanged="ExponentSlider_ValueChanged" />
+                            <Slider x:Name="ExponentSlider" Minimum="0.05" Maximum="0.5" TickFrequency="0.01" IsSnapToTickEnabled="True" ValueChanged="ExponentSlider_ValueChanged" />
                         </StackPanel>
-
-                        <!-- Divisor -->
                         <StackPanel Margin="0,0,0,14">
                             <Grid Margin="0,0,0,6">
-                                <TextBlock Text="Divisor"
-                                           FontSize="13" Foreground="White"
-                                           HorizontalAlignment="Left" />
-                                <Border HorizontalAlignment="Right"
-                                        Background="#2622C55E" CornerRadius="6"
-                                        Padding="10,4">
-                                    <TextBlock x:Name="DivisorValueText"
-                                               FontSize="13" FontWeight="Bold"
-                                               Foreground="#22C55E" />
+                                <TextBlock Text="Divisor" FontSize="13" Foreground="White" HorizontalAlignment="Left" />
+                                <Border HorizontalAlignment="Right" Background="#2622C55E" CornerRadius="6" Padding="10,4">
+                                    <TextBlock x:Name="DivisorValueText" FontSize="13" FontWeight="Bold" Foreground="#22C55E" />
                                 </Border>
                             </Grid>
-                            <Slider x:Name="DivisorSlider"
-                                    Minimum="0.1" Maximum="1.0"
-                                    TickFrequency="0.05"
-                                    IsSnapToTickEnabled="True"
-                                    ValueChanged="DivisorSlider_ValueChanged" />
+                            <Slider x:Name="DivisorSlider" Minimum="0.1" Maximum="1.0" TickFrequency="0.05" IsSnapToTickEnabled="True" ValueChanged="DivisorSlider_ValueChanged" />
                         </StackPanel>
-
-                        <TextBlock Text="Adjust waveform visualization sensitivity. Higher multiplier &amp; lower exponent = more sensitive."
-                                   FontSize="12" Foreground="#A0A0B8"
-                                   TextWrapping="Wrap" />
+                        <TextBlock Text="Adjust waveform visualization sensitivity. Higher multiplier &amp; lower exponent = more sensitive." FontSize="12" Foreground="#A0A0B8" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
             </StackPanel>
+            ========== End Waveform Sensitivity ========== -->
 
             <!-- ========== Section: General ========== -->
             <StackPanel Margin="0,0,0,20">

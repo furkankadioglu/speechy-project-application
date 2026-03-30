@@ -35,14 +35,13 @@ public partial class AdvancedTab : UserControl
         DelaySlider.Value = _settings.ActivationDelay * 1000;
         DelayValueText.Text = $"{(int)(_settings.ActivationDelay * 1000)} ms";
 
-        MultiplierSlider.Value = _settings.WaveMultiplier;
-        MultiplierValueText.Text = $"{_settings.WaveMultiplier:F0}";
-
-        ExponentSlider.Value = _settings.WaveExponent;
-        ExponentValueText.Text = $"{_settings.WaveExponent:F2}";
-
-        DivisorSlider.Value = _settings.WaveDivisor;
-        DivisorValueText.Text = $"{_settings.WaveDivisor:F2}";
+        // Waveform sliders hidden — uncomment when waveform section is re-enabled
+        // MultiplierSlider.Value = _settings.WaveMultiplier;
+        // MultiplierValueText.Text = $"{_settings.WaveMultiplier:F0}";
+        // ExponentSlider.Value = _settings.WaveExponent;
+        // ExponentValueText.Text = $"{_settings.WaveExponent:F2}";
+        // DivisorSlider.Value = _settings.WaveDivisor;
+        // DivisorValueText.Text = $"{_settings.WaveDivisor:F2}";
 
         // Toggles
         LaunchAtLoginToggle.IsChecked = _settings.LaunchAtLogin;
@@ -334,26 +333,25 @@ public partial class AdvancedTab : UserControl
         _settings.ActivationDelay = ms / 1000.0;
     }
 
-    private void MultiplierSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (!_isInitialized) return;
-        MultiplierValueText.Text = $"{e.NewValue:F0}";
-        _settings.WaveMultiplier = e.NewValue;
-    }
-
-    private void ExponentSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (!_isInitialized) return;
-        ExponentValueText.Text = $"{e.NewValue:F2}";
-        _settings.WaveExponent = e.NewValue;
-    }
-
-    private void DivisorSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (!_isInitialized) return;
-        DivisorValueText.Text = $"{e.NewValue:F2}";
-        _settings.WaveDivisor = e.NewValue;
-    }
+    // Waveform handlers hidden — uncomment when waveform section is re-enabled
+    // private void MultiplierSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    // {
+    //     if (!_isInitialized) return;
+    //     MultiplierValueText.Text = $"{e.NewValue:F0}";
+    //     _settings.WaveMultiplier = e.NewValue;
+    // }
+    // private void ExponentSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    // {
+    //     if (!_isInitialized) return;
+    //     ExponentValueText.Text = $"{e.NewValue:F2}";
+    //     _settings.WaveExponent = e.NewValue;
+    // }
+    // private void DivisorSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    // {
+    //     if (!_isInitialized) return;
+    //     DivisorValueText.Text = $"{e.NewValue:F2}";
+    //     _settings.WaveDivisor = e.NewValue;
+    // }
 
     private void LaunchAtLogin_Changed(object sender, RoutedEventArgs e)
     {

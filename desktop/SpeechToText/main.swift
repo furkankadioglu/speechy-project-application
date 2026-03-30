@@ -202,15 +202,11 @@ struct TranscriptionEntry: Identifiable, Codable {
 }
 
 enum ModelType: String, Codable, CaseIterable {
-    case fast = "base"
-    case accurate = "small"
     case precise = "medium"
     case ultimate = "large-v3"
 
     var displayName: String {
         switch self {
-        case .fast: return "Fast (Base)"
-        case .accurate: return "Accurate (Small)"
         case .precise: return "Precise (Medium)"
         case .ultimate: return "Ultimate (Large)"
         }
@@ -218,9 +214,7 @@ enum ModelType: String, Codable, CaseIterable {
 
     var description: String {
         switch self {
-        case .fast: return "Fastest, for everyday use"
-        case .accurate: return "Balanced speed and accuracy"
-        case .precise: return "Slowest but most accurate"
+        case .precise: return "Balanced accuracy and speed"
         case .ultimate: return "Maximum accuracy, requires more resources"
         }
     }
@@ -235,8 +229,6 @@ enum ModelType: String, Codable, CaseIterable {
 
     var sizeDescription: String {
         switch self {
-        case .fast: return "~150 MB"
-        case .accurate: return "~500 MB"
         case .precise: return "~1.5 GB"
         case .ultimate: return "~3.1 GB"
         }
@@ -244,8 +236,6 @@ enum ModelType: String, Codable, CaseIterable {
 
     var sizeBytes: Int64 {
         switch self {
-        case .fast: return 150_000_000
-        case .accurate: return 500_000_000
         case .precise: return 1_500_000_000
         case .ultimate: return 3_100_000_000
         }
@@ -1851,7 +1841,7 @@ class SettingsManager: ObservableObject {
         if let modelRaw = defaults.string(forKey: "selectedModel"), let model = ModelType(rawValue: modelRaw) {
             _selectedModel = Published(initialValue: model)
         } else {
-            _selectedModel = Published(initialValue: .fast)
+            _selectedModel = Published(initialValue: .precise)
         }
 
         if let data = defaults.data(forKey: "history"), let h = try? JSONDecoder().decode([TranscriptionEntry].self, from: data) {
@@ -1951,7 +1941,7 @@ class SettingsManager: ObservableObject {
     init(forTesting: Bool) {
         _slots = Published(initialValue: SettingsManager.defaultSlots())
         _activationDelay = Published(initialValue: 0.15)
-        _selectedModel = Published(initialValue: .fast)
+        _selectedModel = Published(initialValue: .precise)
         _history = Published(initialValue: [])
         _selectedInputDeviceUID = Published(initialValue: "system_default")
         _hasCompletedOnboarding = Published(initialValue: false)
@@ -2769,73 +2759,17 @@ struct AdvancedTab: View {
                     .cornerRadius(12)
                 }
 
-                // Section: Waveform Tuning
-                VStack(alignment: .leading, spacing: 12) {
-                    SectionHeader(icon: "waveform.path.ecg", title: "Waveform Sensitivity", color: .green)
-
-                    VStack(alignment: .leading, spacing: 14) {
-                        // Multiplier
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Multiplier")
-                                    .font(.subheadline)
-                                Spacer()
-                                Text(String(format: "%.0f", settings.waveMultiplier))
-                                    .font(.system(.subheadline, design: .rounded).bold())
-                                    .foregroundColor(.green)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(Color.green.opacity(0.15))
-                                    .cornerRadius(6)
-                            }
-                            Slider(value: $settings.waveMultiplier, in: 100...2000, step: 50)
-                                .tint(.green)
-                        }
-
-                        // Exponent
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Exponent")
-                                    .font(.subheadline)
-                                Spacer()
-                                Text(String(format: "%.2f", settings.waveExponent))
-                                    .font(.system(.subheadline, design: .rounded).bold())
-                                    .foregroundColor(.green)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(Color.green.opacity(0.15))
-                                    .cornerRadius(6)
-                            }
-                            Slider(value: $settings.waveExponent, in: 0.05...0.5, step: 0.01)
-                                .tint(.green)
-                        }
-
-                        // Divisor
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Divisor")
-                                    .font(.subheadline)
-                                Spacer()
-                                Text(String(format: "%.2f", settings.waveDivisor))
-                                    .font(.system(.subheadline, design: .rounded).bold())
-                                    .foregroundColor(.green)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(Color.green.opacity(0.15))
-                                    .cornerRadius(6)
-                            }
-                            Slider(value: $settings.waveDivisor, in: 0.1...1.0, step: 0.05)
-                                .tint(.green)
-                        }
-
-                        Text("Adjust waveform visualization sensitivity. Higher multiplier & lower exponent = more sensitive.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding()
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(12)
-                }
+                // MARK: Waveform Sensitivity section hidden — uncomment to restore
+                // VStack(alignment: .leading, spacing: 12) {
+                //     SectionHeader(icon: "waveform.path.ecg", title: "Waveform Sensitivity", color: .green)
+                //     VStack(alignment: .leading, spacing: 14) {
+                //         // Multiplier slider (100...2000, step 50) → settings.waveMultiplier
+                //         // Exponent slider  (0.05...0.5, step 0.01) → settings.waveExponent
+                //         // Divisor slider   (0.1...1.0, step 0.05)  → settings.waveDivisor
+                //         // Text("Adjust waveform visualization sensitivity...")
+                //     }
+                //     .padding().background(Color(NSColor.controlBackgroundColor)).cornerRadius(12)
+                // }
 
                 // Section: General
                 VStack(alignment: .leading, spacing: 12) {
@@ -3417,7 +3351,7 @@ struct ModelOptionRow: View {
 
             if isDownloaded {
                 Button(action: onSelect) {
-                    Text(model == .fast ? "⚡️" : model == .accurate ? "🎯" : "🔬")
+                    Text(model == .precise ? "🎯" : "🔬")
                         .font(.title2)
                 }
                 .buttonStyle(.plain)
@@ -4452,6 +4386,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var activeLanguage = "en"
     var activeFlag = "🇬🇧"
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openSettings()
+        return true
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         log("[Speechy] App starting...")
 
@@ -4680,10 +4619,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let hasAnyModel = ModelType.allCases.contains { downloadManager.modelExists($0) }
 
         if !hasAnyModel {
-            log("[Speechy] No models found, starting auto-download of base model...")
-            downloadManager.downloadModel(.fast)
-            // Make sure the selected model is set to fast
-            SettingsManager.shared.selectedModel = .fast
+            log("[Speechy] No models found, starting auto-download of medium model...")
+            downloadManager.downloadModel(.precise)
+            SettingsManager.shared.selectedModel = .precise
         } else {
             // Ensure selected model exists, otherwise switch to an available one
             if !downloadManager.modelExists(SettingsManager.shared.selectedModel) {
@@ -5517,7 +5455,7 @@ class WhisperTranscriber {
         let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return path.isEmpty ? nil : path
     }
-    private var currentModel: ModelType = .fast
+    private var currentModel: ModelType = .precise
 
     // Patterns to filter out (music, silence, non-speech)
     private let nonSpeechPatterns: [String] = [
