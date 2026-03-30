@@ -342,6 +342,9 @@ class LocalizationManager {
             "nav.quit": "Quit",
             "section.app_language": "App Language",
             "other.language_desc": "Select the language for the user interface.",
+            "section.dock": "Dock",
+            "other.show_in_dock": "Show in Dock",
+            "other.show_in_dock_desc": "Display Speechy icon in the Dock.",
         ],
         "tr": [
             "nav.hotkeys": "Kısayollar",
@@ -354,6 +357,9 @@ class LocalizationManager {
             "nav.quit": "Çıkış",
             "section.app_language": "Uygulama Dili",
             "other.language_desc": "Kullanıcı arayüzü dilini seçin.",
+            "section.dock": "Dock",
+            "other.show_in_dock": "Dock'ta Göster",
+            "other.show_in_dock_desc": "Speechy simgesini Dock'ta göster.",
         ],
         "pt": [
             "nav.hotkeys": "Teclas de Atalho",
@@ -366,6 +372,9 @@ class LocalizationManager {
             "nav.quit": "Sair",
             "section.app_language": "Idioma do App",
             "other.language_desc": "Selecione o idioma da interface.",
+            "section.dock": "Dock",
+            "other.show_in_dock": "Mostrar no Dock",
+            "other.show_in_dock_desc": "Exibir ícone do Speechy no Dock.",
         ],
         "zh": [
             "nav.hotkeys": "快捷键",
@@ -378,6 +387,9 @@ class LocalizationManager {
             "nav.quit": "退出",
             "section.app_language": "应用语言",
             "other.language_desc": "选择用户界面语言。",
+            "section.dock": "程序坞",
+            "other.show_in_dock": "在程序坞中显示",
+            "other.show_in_dock_desc": "在程序坞中显示 Speechy 图标。",
         ],
         "es": [
             "nav.hotkeys": "Teclas de Acceso",
@@ -390,6 +402,9 @@ class LocalizationManager {
             "nav.quit": "Salir",
             "section.app_language": "Idioma de la App",
             "other.language_desc": "Seleccione el idioma de la interfaz.",
+            "section.dock": "Dock",
+            "other.show_in_dock": "Mostrar en el Dock",
+            "other.show_in_dock_desc": "Mostrar icono de Speechy en el Dock.",
         ],
         "ru": [
             "nav.hotkeys": "Горячие клавиши",
@@ -402,6 +417,9 @@ class LocalizationManager {
             "nav.quit": "Выйти",
             "section.app_language": "Язык приложения",
             "other.language_desc": "Выберите язык интерфейса.",
+            "section.dock": "Dock",
+            "other.show_in_dock": "Показывать в Dock",
+            "other.show_in_dock_desc": "Отображать значок Speechy в Dock.",
         ],
         "uk": [
             "nav.hotkeys": "Гарячі клавіші",
@@ -414,6 +432,9 @@ class LocalizationManager {
             "nav.quit": "Вийти",
             "section.app_language": "Мова програми",
             "other.language_desc": "Виберіть мову інтерфейсу.",
+            "section.dock": "Dock",
+            "other.show_in_dock": "Показувати в Dock",
+            "other.show_in_dock_desc": "Відображати значок Speechy в Dock.",
         ],
         "pl": [
             "nav.hotkeys": "Skróty klawiszowe",
@@ -426,6 +447,9 @@ class LocalizationManager {
             "nav.quit": "Wyjdź",
             "section.app_language": "Język aplikacji",
             "other.language_desc": "Wybierz język interfejsu użytkownika.",
+            "section.dock": "Dock",
+            "other.show_in_dock": "Pokaż w Docku",
+            "other.show_in_dock_desc": "Wyświetlaj ikonę Speechy w Docku.",
         ],
     ]
 }
@@ -1751,6 +1775,7 @@ class SettingsManager: ObservableObject {
     @Published var savedWords: [String]
     @Published var modalConfig: ModalConfigType
     @Published var appLanguage: String
+    @Published var showInDock: Bool
 
     /// When true, hotkey triggers are suppressed (user is recording a new shortcut in settings)
     var isCapturingShortcut = false
@@ -1877,6 +1902,9 @@ class SettingsManager: ObservableObject {
         // App language: load from UserDefaults
         _appLanguage = Published(initialValue: defaults.string(forKey: "appLanguage") ?? "en")
 
+        // Dock visibility: default true
+        _showInDock = Published(initialValue: defaults.object(forKey: "showInDock") as? Bool ?? true)
+
         // Auto-save and notify on changes
         $slots.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
@@ -1906,6 +1934,13 @@ class SettingsManager: ObservableObject {
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
         $appLanguage.dropFirst()
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
+        $showInDock.dropFirst()
+            .sink { show in
+                DispatchQueue.main.async {
+                    NSApp.setActivationPolicy(show ? .regular : .accessory)
+                }
+                UserDefaults.standard.set(show, forKey: "showInDock")
+            }.store(in: &cancellables)
     }
 
     #if TESTING
@@ -1963,6 +1998,7 @@ class SettingsManager: ObservableObject {
         if let data = try? JSONEncoder().encode(savedWords) { defaults.set(data, forKey: "savedWords") }
         defaults.set(modalConfig.rawValue, forKey: "modalConfig")
         defaults.set(appLanguage, forKey: "appLanguage")
+        defaults.set(showInDock, forKey: "showInDock")
     }
 
     /// Builds the whisper --prompt string from saved words + modal config hint.
@@ -3211,9 +3247,34 @@ struct OtherSettingsTab: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
+                dockSection
                 languageSection
             }
             .padding()
+        }
+    }
+
+    private var dockSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(icon: "dock.rectangle", title: loc("section.dock"), color: .indigo)
+
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(loc("other.show_in_dock"))
+                        .font(.system(size: 13, weight: .medium))
+                    Text(loc("other.show_in_dock_desc"))
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Toggle("", isOn: $settings.showInDock)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+            .padding(14)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(12)
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(NSColor.separatorColor), lineWidth: 1))
         }
     }
 
@@ -4377,6 +4438,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         log("[Speechy] App starting...")
+
+        // Apply dock visibility from saved preference (default: visible)
+        let showInDock = UserDefaults.standard.object(forKey: "showInDock") as? Bool ?? true
+        NSApp.setActivationPolicy(showInDock ? .regular : .accessory)
 
         // Show splash screen first
         showSplashScreen()
@@ -5657,7 +5722,6 @@ class WhisperTranscriber {
 exit(runAllTests())
 #else
 let app = NSApplication.shared
-app.setActivationPolicy(.accessory)  // Menu bar app: no Dock icon
 let delegate = AppDelegate()
 app.delegate = delegate
 app.run()
