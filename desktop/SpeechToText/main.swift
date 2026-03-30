@@ -3248,35 +3248,36 @@ struct OtherSettingsTab: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
-                dockSection
+            VStack(alignment: .leading, spacing: 20) {
+                // ── Dock ──────────────────────────────────────────
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeader(icon: "macwindow", title: loc("section.dock"), color: .purple)
+
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(loc("other.show_in_dock"))
+                                .font(.system(size: 13, weight: .medium))
+                            Text(loc("other.show_in_dock_desc"))
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Toggle(isOn: $settings.showInDock) { EmptyView() }
+                            .toggleStyle(.switch)
+                    }
+                    .padding(14)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                    )
+                }
+
+                // ── Language ───────────────────────────────────────
                 languageSection
             }
             .padding()
-        }
-    }
-
-    private var dockSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(icon: "macwindow", title: loc("section.dock"), color: .indigo)
-
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(loc("other.show_in_dock"))
-                        .font(.system(size: 13, weight: .medium))
-                    Text(loc("other.show_in_dock_desc"))
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-                Toggle("", isOn: $settings.showInDock)
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-            }
-            .padding(14)
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(12)
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(NSColor.separatorColor), lineWidth: 1))
         }
     }
 
