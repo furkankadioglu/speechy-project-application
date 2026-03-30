@@ -326,7 +326,9 @@ class LocalizationManager {
     ]
 
     func loc(_ key: String) -> String {
-        let lang = UserDefaults.standard.string(forKey: "appLanguage") ?? "en"
+        // Read directly from SettingsManager so changes are reflected immediately on re-render,
+        // without waiting for the Combine sink to flush the value to UserDefaults.
+        let lang = SettingsManager.shared.appLanguage
         return translations[lang]?[key] ?? translations["en"]?[key] ?? key
     }
 
