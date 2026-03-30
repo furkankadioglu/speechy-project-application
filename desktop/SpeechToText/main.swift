@@ -295,7 +295,7 @@ enum ModalConfigType: String, Codable, CaseIterable {
         case .noCapitalize:  return "textformat.size.smaller"
         case .allLowercase:  return "textformat"
         case .formal:        return "building.2"
-        case .paragraphs:    return "text.alignjustify"
+        case .paragraphs:    return "text.justify"
         case .meetingNotes:  return "list.bullet.clipboard"
         }
     }
