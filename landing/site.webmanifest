@@ -1,0 +1,12 @@
+{
+  "name": "Speechy",
+  "short_name": "Speechy",
+  "description": "100% local AI speech-to-text for macOS",
+  "icons": [
+    { "src": "android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "android-chrome-512x512.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "theme_color": "#0a0a14",
+  "background_color": "#0a0a14",
+  "display": "standalone"
+}
