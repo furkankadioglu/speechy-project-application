@@ -69,7 +69,7 @@ a {
    ============================================ */
 .navbar {
   position: fixed;
-  top: 36px;
+  top: 0;
   left: 0;
   right: 0;
   z-index: 1000;
@@ -240,7 +240,7 @@ a {
   justify-content: center;
   background: var(--gradient-bg);
   overflow: hidden;
-  padding: 160px 0 100px;
+  padding: 120px 0 100px;
 }
 
 /* Waveform background */
@@ -1036,7 +1036,7 @@ a {
   }
 
   .hero {
-    padding: 140px 0 80px;
+    padding: 100px 0 80px;
     min-height: auto;
   }
 
@@ -1051,8 +1051,9 @@ a {
     justify-content: center;
   }
 
-  .lang-bar-track {
-    justify-content: flex-start;
+  .lang-dropdown {
+    right: auto;
+    left: 0;
   }
 
   .hero-title {
@@ -1160,67 +1161,113 @@ a {
   }
 }
 
-/* ── Language Bar (top strip) ───────────────────────────────────────────── */
-#lang-bar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1100;
-  height: 36px;
-  background: rgba(8, 8, 18, 0.96);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+/* ── Nav right cluster ──────────────────────────────────────────────────── */
+.nav-right {
   display: flex;
   align-items: center;
-  overflow: hidden;
+  gap: 12px;
 }
 
-.lang-bar-track {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 0 12px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  width: 100%;
-  justify-content: center;
+/* ── Language Picker Dropdown ───────────────────────────────────────────── */
+.lang-picker {
+  position: relative;
 }
 
-.lang-bar-track::-webkit-scrollbar {
-  display: none;
-}
-
-.lb-btn {
+.lang-picker-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 9px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: none;
-  color: rgba(255, 255, 255, 0.45);
-  font-size: 0.72rem;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.82rem;
   font-weight: 600;
   font-family: var(--font);
   letter-spacing: 0.04em;
   cursor: pointer;
-  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
   white-space: nowrap;
-  flex-shrink: 0;
+}
+
+.lang-picker-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: var(--white);
+}
+
+.lang-picker-btn[aria-expanded="true"] {
+  background: rgba(0, 122, 255, 0.15);
+  border-color: rgba(0, 122, 255, 0.4);
+  color: var(--white);
+}
+
+.lang-picker-caret {
+  transition: transform 0.2s ease;
+  opacity: 0.6;
+}
+
+.lang-picker-btn[aria-expanded="true"] .lang-picker-caret {
+  transform: rotate(180deg);
+}
+
+.lang-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 2000;
+  min-width: 200px;
+  background: rgba(14, 14, 26, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.04);
+  padding: 6px;
+  display: none;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  animation: dropdownFadeIn 0.18s ease;
+}
+
+.lang-dropdown.open {
+  display: grid;
+}
+
+@keyframes dropdownFadeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.lb-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.82rem;
+  font-weight: 500;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  text-align: left;
 }
 
 .lb-btn:hover {
-  color: rgba(255, 255, 255, 0.85);
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--white);
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .lb-btn.active {
   color: var(--white);
-  background: rgba(0, 122, 255, 0.18);
-  border-color: rgba(0, 122, 255, 0.35);
+  background: rgba(0, 122, 255, 0.15);
+  border-color: rgba(0, 122, 255, 0.3);
 }
 
 /* ── Ghost Button ───────────────────────────────────────────────────────── */

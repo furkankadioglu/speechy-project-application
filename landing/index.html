@@ -30,30 +30,6 @@
 </head>
 <body>
 
-  <!-- ── Language Bar ──────────────────────────────────────────────────── -->
-  <div id="lang-bar" role="navigation" aria-label="Language selector">
-    <div class="lang-bar-track">
-      <button class="lb-btn active" data-lang="en">🇬🇧 EN</button>
-      <button class="lb-btn" data-lang="tr">🇹🇷 TR</button>
-      <button class="lb-btn" data-lang="de">🇩🇪 DE</button>
-      <button class="lb-btn" data-lang="fr">🇫🇷 FR</button>
-      <button class="lb-btn" data-lang="es">🇪🇸 ES</button>
-      <button class="lb-btn" data-lang="it">🇮🇹 IT</button>
-      <button class="lb-btn" data-lang="pt">🇧🇷 PT</button>
-      <button class="lb-btn" data-lang="nl">🇳🇱 NL</button>
-      <button class="lb-btn" data-lang="pl">🇵🇱 PL</button>
-      <button class="lb-btn" data-lang="ru">🇷🇺 RU</button>
-      <button class="lb-btn" data-lang="uk">🇺🇦 UK</button>
-      <button class="lb-btn" data-lang="zh">🇨🇳 ZH</button>
-      <button class="lb-btn" data-lang="ja">🇯🇵 JA</button>
-      <button class="lb-btn" data-lang="ko">🇰🇷 KO</button>
-      <button class="lb-btn" data-lang="ar">🇸🇦 AR</button>
-      <button class="lb-btn" data-lang="hi">🇮🇳 HI</button>
-      <button class="lb-btn" data-lang="id">🇮🇩 ID</button>
-      <button class="lb-btn" data-lang="vi">🇻🇳 VI</button>
-    </div>
-  </div>
-
   <!-- ── Navigation ───────────────────────────────────────────────────── -->
   <nav class="navbar" id="navbar">
     <div class="container nav-container">
@@ -66,7 +42,46 @@
         <li><a href="#how-it-works" data-i18n="nav.how">How it Works</a></li>
         <li><a href="#privacy" data-i18n="nav.privacy">Privacy</a></li>
       </ul>
-      <a href="#try-free" class="nav-cta" data-i18n="nav.try">Try Free</a>
+      <div class="nav-right">
+        <!-- Language picker -->
+        <div class="lang-picker" id="lang-picker">
+          <button class="lang-picker-btn" id="lang-picker-btn" aria-haspopup="listbox" aria-expanded="false">
+            <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="10" cy="10" r="8.5"/>
+              <path d="M10 1.5C10 1.5 7 5.5 7 10s3 8.5 3 8.5"/>
+              <path d="M10 1.5C10 1.5 13 5.5 13 10s-3 8.5-3 8.5"/>
+              <line x1="1.5" y1="10" x2="18.5" y2="10"/>
+              <line x1="2.5" y1="6" x2="17.5" y2="6"/>
+              <line x1="2.5" y1="14" x2="17.5" y2="14"/>
+            </svg>
+            <span id="lang-picker-label">EN</span>
+            <svg class="lang-picker-caret" viewBox="0 0 10 6" width="10" height="6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="1,1 5,5 9,1"/>
+            </svg>
+          </button>
+          <div class="lang-dropdown" id="lang-dropdown" role="listbox">
+            <button class="lb-btn active" data-lang="en">🇬🇧 English</button>
+            <button class="lb-btn" data-lang="tr">🇹🇷 Türkçe</button>
+            <button class="lb-btn" data-lang="de">🇩🇪 Deutsch</button>
+            <button class="lb-btn" data-lang="fr">🇫🇷 Français</button>
+            <button class="lb-btn" data-lang="es">🇪🇸 Español</button>
+            <button class="lb-btn" data-lang="it">🇮🇹 Italiano</button>
+            <button class="lb-btn" data-lang="pt">🇧🇷 Português</button>
+            <button class="lb-btn" data-lang="nl">🇳🇱 Nederlands</button>
+            <button class="lb-btn" data-lang="pl">🇵🇱 Polski</button>
+            <button class="lb-btn" data-lang="ru">🇷🇺 Русский</button>
+            <button class="lb-btn" data-lang="uk">🇺🇦 Українська</button>
+            <button class="lb-btn" data-lang="zh">🇨🇳 中文</button>
+            <button class="lb-btn" data-lang="ja">🇯🇵 日本語</button>
+            <button class="lb-btn" data-lang="ko">🇰🇷 한국어</button>
+            <button class="lb-btn" data-lang="ar">🇸🇦 العربية</button>
+            <button class="lb-btn" data-lang="hi">🇮🇳 हिन्दी</button>
+            <button class="lb-btn" data-lang="id">🇮🇩 Indonesia</button>
+            <button class="lb-btn" data-lang="vi">🇻🇳 Tiếng Việt</button>
+          </div>
+        </div>
+        <a href="#try-free" class="nav-cta" data-i18n="nav.try">Try Free</a>
+      </div>
       <button class="nav-mobile-toggle" id="nav-toggle" aria-label="Toggle menu">
         <span></span><span></span><span></span>
       </button>
@@ -697,10 +712,12 @@
         if (val) el.placeholder = val;
       });
 
-      // Active button
+      // Active button + update picker label
       document.querySelectorAll('.lb-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.lang === code);
       });
+      const labelEl = document.getElementById('lang-picker-label');
+      if (labelEl) labelEl.textContent = code.toUpperCase();
 
       // RTL
       document.documentElement.setAttribute('lang', code);

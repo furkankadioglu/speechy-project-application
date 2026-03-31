@@ -345,6 +345,46 @@
     }
   }
 
+  // ── Language picker dropdown ─────────────────────────────────────
+  function initLangPicker() {
+    var btn = document.getElementById('lang-picker-btn');
+    var dropdown = document.getElementById('lang-dropdown');
+    if (!btn || !dropdown) return;
+
+    function open() {
+      dropdown.classList.add('open');
+      btn.setAttribute('aria-expanded', 'true');
+    }
+
+    function close() {
+      dropdown.classList.remove('open');
+      btn.setAttribute('aria-expanded', 'false');
+    }
+
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (dropdown.classList.contains('open')) { close(); } else { open(); }
+    });
+
+    // Close when clicking outside
+    document.addEventListener('click', function (e) {
+      if (!btn.contains(e.target) && !dropdown.contains(e.target)) {
+        close();
+      }
+    });
+
+    // Close on Escape
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') close();
+    });
+
+    // Close when a language is selected
+    dropdown.addEventListener('click', function (e) {
+      var target = e.target.closest('.lb-btn');
+      if (target) { close(); }
+    });
+  }
+
   // ── Initialize everything on DOM ready ──────────────────────────
   document.addEventListener('DOMContentLoaded', function () {
     initWaveform();
@@ -355,5 +395,6 @@
     initMobileNav();
     initNavHighlight();
     initSignupForm();
+    initLangPicker();
   });
 })();
