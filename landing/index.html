@@ -4,21 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Speechy — Your Voice, Instantly as Text</title>
-  <meta name="description" content="100% local AI speech-to-text for macOS. No cloud, no latency, no compromise. Powered by on-device Whisper AI.">
-  <meta name="keywords" content="speech to text, voice recognition, macOS, whisper AI, offline, privacy, transcription">
+  <meta name="description" content="100% local AI speech-to-text for macOS & Windows. No cloud, no latency, no compromise. Powered by on-device Whisper AI.">
+  <meta name="keywords" content="speech to text, voice recognition, macOS, windows, whisper AI, offline, privacy, transcription">
   <meta name="theme-color" content="#0a0a14">
 
   <!-- Favicons -->
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="48x48" href="favicon-48x48.png">
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="manifest" href="site.webmanifest">
 
   <!-- Open Graph -->
   <meta property="og:title" content="Speechy — Your Voice, Instantly as Text">
-  <meta property="og:description" content="100% local AI speech-to-text for macOS. No cloud, no latency, no compromise.">
+  <meta property="og:description" content="100% local AI speech-to-text. No cloud, no latency, no compromise.">
   <meta property="og:image" content="og-image.png">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
@@ -31,54 +30,61 @@
 </head>
 <body>
 
-  <!-- Navigation -->
+  <!-- ── Language Bar ──────────────────────────────────────────────────── -->
+  <div id="lang-bar" role="navigation" aria-label="Language selector">
+    <div class="lang-bar-track">
+      <button class="lb-btn active" data-lang="en">🇬🇧 EN</button>
+      <button class="lb-btn" data-lang="tr">🇹🇷 TR</button>
+      <button class="lb-btn" data-lang="de">🇩🇪 DE</button>
+      <button class="lb-btn" data-lang="fr">🇫🇷 FR</button>
+      <button class="lb-btn" data-lang="es">🇪🇸 ES</button>
+      <button class="lb-btn" data-lang="it">🇮🇹 IT</button>
+      <button class="lb-btn" data-lang="pt">🇧🇷 PT</button>
+      <button class="lb-btn" data-lang="nl">🇳🇱 NL</button>
+      <button class="lb-btn" data-lang="pl">🇵🇱 PL</button>
+      <button class="lb-btn" data-lang="ru">🇷🇺 RU</button>
+      <button class="lb-btn" data-lang="uk">🇺🇦 UK</button>
+      <button class="lb-btn" data-lang="zh">🇨🇳 ZH</button>
+      <button class="lb-btn" data-lang="ja">🇯🇵 JA</button>
+      <button class="lb-btn" data-lang="ko">🇰🇷 KO</button>
+      <button class="lb-btn" data-lang="ar">🇸🇦 AR</button>
+      <button class="lb-btn" data-lang="hi">🇮🇳 HI</button>
+      <button class="lb-btn" data-lang="id">🇮🇩 ID</button>
+      <button class="lb-btn" data-lang="vi">🇻🇳 VI</button>
+    </div>
+  </div>
+
+  <!-- ── Navigation ───────────────────────────────────────────────────── -->
   <nav class="navbar" id="navbar">
     <div class="container nav-container">
       <a href="#" class="nav-logo">
-        <svg class="logo-icon" viewBox="0 0 32 32" width="28" height="28">
-          <defs>
-            <linearGradient id="logoGrad" x1="0" y1="0" x2="32" y2="32">
-              <stop offset="0%" stop-color="#007AFF"/>
-              <stop offset="100%" stop-color="#AF52DE"/>
-            </linearGradient>
-          </defs>
-          <circle cx="16" cy="16" r="15" fill="url(#logoGrad)"/>
-          <path d="M16 8c-1.5 0-2.7 1.2-2.7 2.7v5.6c0 1.5 1.2 2.7 2.7 2.7s2.7-1.2 2.7-2.7v-5.6C18.7 9.2 17.5 8 16 8z" fill="white"/>
-          <path d="M21 15.5v.8c0 2.8-2.2 5-5 5s-5-2.2-5-5v-.8" stroke="white" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-          <line x1="16" y1="21.3" x2="16" y2="24" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
+        <img src="speechy-icon.png" width="30" height="30" alt="Speechy" class="nav-logo-img">
         <span>Speechy</span>
       </a>
       <ul class="nav-links">
-        <li><a href="#features">Features</a></li>
-        <li><a href="#how-it-works">How it Works</a></li>
-        <li><a href="#privacy">Privacy</a></li>
+        <li><a href="#features" data-i18n="nav.features">Features</a></li>
+        <li><a href="#how-it-works" data-i18n="nav.how">How it Works</a></li>
+        <li><a href="#privacy" data-i18n="nav.privacy">Privacy</a></li>
       </ul>
-      <a href="#try-free" class="nav-cta">Try Free</a>
+      <a href="#try-free" class="nav-cta" data-i18n="nav.try">Try Free</a>
       <button class="nav-mobile-toggle" id="nav-toggle" aria-label="Toggle menu">
-        <span></span>
-        <span></span>
-        <span></span>
+        <span></span><span></span><span></span>
       </button>
     </div>
-    <!-- Mobile menu -->
     <div class="nav-mobile-menu" id="nav-mobile-menu">
-      <a href="#features">Features</a>
-      <a href="#how-it-works">How it Works</a>
-      <a href="#privacy">Privacy</a>
-      <a href="#try-free" class="nav-cta-mobile">Try Free</a>
+      <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#how-it-works" data-i18n="nav.how">How it Works</a>
+      <a href="#privacy" data-i18n="nav.privacy">Privacy</a>
+      <a href="#try-free" class="nav-cta-mobile" data-i18n="nav.try">Try Free</a>
     </div>
   </nav>
 
-  <!-- Hero Section -->
+  <!-- ── Hero ─────────────────────────────────────────────────────────── -->
   <section class="hero" id="hero">
-    <!-- Animated waveform background -->
     <div class="hero-waveform-bg">
       <svg id="waveform-svg" preserveAspectRatio="none"></svg>
     </div>
-    <!-- Particle canvas -->
     <canvas id="particles-canvas"></canvas>
-    <!-- Gradient orbs -->
     <div class="hero-orbs">
       <div class="orb orb-1"></div>
       <div class="orb orb-2"></div>
@@ -86,43 +92,48 @@
     </div>
 
     <div class="container hero-content">
-      <h1 class="hero-title fade-in">Your voice, instantly<br>as text.</h1>
-      <p class="hero-subtitle fade-in">100% local AI. No cloud. No latency. Just speak.</p>
+      <h1 class="hero-title fade-in" data-i18n="hero.title">Your voice, instantly<br>as text.</h1>
+      <p class="hero-subtitle fade-in" data-i18n="hero.sub">100% local AI. No cloud. No latency. Just speak.</p>
+
       <div class="hero-stats fade-in">
         <div class="stat">
           <span class="stat-value">29</span>
-          <span class="stat-label">Languages</span>
+          <span class="stat-label" data-i18n="hero.stat_lang">Languages</span>
         </div>
         <span class="stat-divider"></span>
         <div class="stat">
           <span class="stat-value">~3s</span>
-          <span class="stat-label">Processing</span>
+          <span class="stat-label" data-i18n="hero.stat_speed">Processing</span>
         </div>
         <span class="stat-divider"></span>
         <div class="stat">
           <span class="stat-value">$0</span>
-          <span class="stat-label">Cloud Cost</span>
+          <span class="stat-label" data-i18n="hero.stat_cost">Cloud Cost</span>
         </div>
       </div>
+
       <div class="hero-cta fade-in">
         <a href="#try-free" class="btn btn-primary btn-large">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-          Download for Mac
+          <span data-i18n="hero.mac">Download for Mac</span>
         </a>
-        <p class="hero-secondary">Coming soon for Windows</p>
+        <a href="#" class="btn btn-ghost btn-large">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M3 5.5h8V3H3v2.5zm0 8h8v-2.5H3V13.5zm10-8v2.5h8V5.5h-8zm0 8h8v-2.5h-8V13.5zM3 21h8v-2.5H3V21zm10 0h8v-2.5h-8V21z"/></svg>
+          <span data-i18n="hero.win_soon">Windows — Coming Soon</span>
+        </a>
       </div>
     </div>
   </section>
 
-  <!-- How It Works -->
+  <!-- ── How It Works ──────────────────────────────────────────────────── -->
   <section class="how-it-works" id="how-it-works">
     <div class="container">
       <div class="section-header fade-in">
-        <h2>How it Works</h2>
-        <p>Three steps. Zero complexity.</p>
+        <h2 data-i18n="hiw.title">How it Works</h2>
+        <p data-i18n="hiw.sub">Three steps. Zero complexity.</p>
       </div>
       <div class="steps-row">
-        <div class="step fade-in" data-delay="0">
+        <div class="step fade-in">
           <div class="step-number">1</div>
           <div class="step-icon-wrap">
             <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -130,16 +141,16 @@
               <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M6 16h12"/>
             </svg>
           </div>
-          <h3>Press</h3>
-          <p>Hold your hotkey to start recording</p>
+          <h3 data-i18n="hiw.s1.title">Press</h3>
+          <p data-i18n="hiw.s1.desc">Hold your hotkey to start recording</p>
         </div>
-        <div class="step-connector fade-in" data-delay="100">
+        <div class="step-connector fade-in">
           <svg viewBox="0 0 60 24" width="60" height="24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
             <line x1="0" y1="12" x2="48" y2="12" stroke-dasharray="4 4" opacity="0.3"/>
             <polyline points="44,6 52,12 44,18" opacity="0.5"/>
           </svg>
         </div>
-        <div class="step fade-in" data-delay="200">
+        <div class="step fade-in">
           <div class="step-number">2</div>
           <div class="step-icon-wrap">
             <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -149,122 +160,150 @@
               <line x1="8" y1="23" x2="16" y2="23"/>
             </svg>
           </div>
-          <h3>Speak</h3>
-          <p>Talk naturally in any of 29 transcription languages</p>
+          <h3 data-i18n="hiw.s2.title">Speak</h3>
+          <p data-i18n="hiw.s2.desc">Talk naturally in any of 29 transcription languages</p>
         </div>
-        <div class="step-connector fade-in" data-delay="300">
+        <div class="step-connector fade-in">
           <svg viewBox="0 0 60 24" width="60" height="24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
             <line x1="0" y1="12" x2="48" y2="12" stroke-dasharray="4 4" opacity="0.3"/>
             <polyline points="44,6 52,12 44,18" opacity="0.5"/>
           </svg>
         </div>
-        <div class="step fade-in" data-delay="400">
+        <div class="step fade-in">
           <div class="step-number">3</div>
           <div class="step-icon-wrap">
             <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="20 6 9 17 4 12"/>
             </svg>
           </div>
-          <h3>Done</h3>
-          <p>Text appears instantly in your active app</p>
+          <h3 data-i18n="hiw.s3.title">Done</h3>
+          <p data-i18n="hiw.s3.desc">Text appears instantly in your active app</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Features -->
+  <!-- ── Features ──────────────────────────────────────────────────────── -->
   <section class="features" id="features">
     <div class="container">
       <div class="section-header fade-in">
-        <h2>Why Speechy</h2>
-        <p>Built for people who care about privacy and speed.</p>
+        <h2 data-i18n="feat.title">Why Speechy</h2>
+        <p data-i18n="feat.sub">Built for people who care about privacy and speed.</p>
       </div>
       <div class="features-grid">
-        <div class="feature-card glass-card fade-in" data-delay="0">
+        <div class="feature-card glass-card fade-in">
           <div class="feature-icon-wrap">
             <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
             </svg>
           </div>
-          <h3>100% Private</h3>
-          <p>All processing happens on your device. Your voice never leaves your Mac.</p>
+          <h3 data-i18n="feat.1.title">100% Private</h3>
+          <p data-i18n="feat.1.desc">All processing happens on your device. Your voice never leaves your Mac.</p>
         </div>
-        <div class="feature-card glass-card fade-in" data-delay="150">
+        <div class="feature-card glass-card fade-in">
           <div class="feature-icon-wrap">
             <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
             </svg>
           </div>
-          <h3>Lightning Fast</h3>
-          <p>Powered by Whisper AI. Transcription in under 3 seconds.</p>
+          <h3 data-i18n="feat.2.title">Lightning Fast</h3>
+          <p data-i18n="feat.2.desc">Powered by Whisper AI. Transcription in under 3 seconds.</p>
         </div>
-        <div class="feature-card glass-card fade-in" data-delay="300">
+        <div class="feature-card glass-card fade-in">
           <div class="feature-icon-wrap">
             <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="4" y1="21" x2="4" y2="14"/>
-              <line x1="4" y1="10" x2="4" y2="3"/>
-              <line x1="12" y1="21" x2="12" y2="12"/>
-              <line x1="12" y1="8" x2="12" y2="3"/>
-              <line x1="20" y1="21" x2="20" y2="16"/>
-              <line x1="20" y1="12" x2="20" y2="3"/>
-              <line x1="1" y1="14" x2="7" y2="14"/>
-              <line x1="9" y1="8" x2="15" y2="8"/>
+              <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
+              <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
+              <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
+              <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/>
               <line x1="17" y1="16" x2="23" y2="16"/>
             </svg>
           </div>
-          <h3>Fully Customizable</h3>
-          <p>Unlimited hotkeys, 2 AI models, 18 UI languages.</p>
+          <h3 data-i18n="feat.3.title">Fully Customizable</h3>
+          <p data-i18n="feat.3.desc">Unlimited hotkeys, 2 AI models, 18 UI languages.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- UI Languages -->
+  <!-- ── UI Languages Marquee ───────────────────────────────────────────── -->
   <section class="languages-section">
     <div class="container">
       <div class="section-header fade-in">
         <div class="section-badge">🌍 Multilingual</div>
         <h2>Available in <span class="gradient-text">18 Languages</span></h2>
-        <p class="section-subtitle">The Speechy interface speaks your language — choose from 18 fully localized UI options.</p>
+        <p class="section-subtitle" data-i18n="lang.sub">The Speechy interface speaks your language — choose from 18 fully localized UI options.</p>
       </div>
-      <div class="lang-grid fade-in">
-        <div class="lang-pill">🇬🇧 English</div>
-        <div class="lang-pill">🇹🇷 Türkçe</div>
-        <div class="lang-pill">🇩🇪 Deutsch</div>
-        <div class="lang-pill">🇫🇷 Français</div>
-        <div class="lang-pill">🇪🇸 Español</div>
-        <div class="lang-pill">🇮🇹 Italiano</div>
-        <div class="lang-pill">🇧🇷 Português</div>
-        <div class="lang-pill">🇳🇱 Nederlands</div>
-        <div class="lang-pill">🇵🇱 Polski</div>
-        <div class="lang-pill">🇷🇺 Русский</div>
-        <div class="lang-pill">🇺🇦 Українська</div>
-        <div class="lang-pill">🇨🇳 中文</div>
-        <div class="lang-pill">🇯🇵 日本語</div>
-        <div class="lang-pill">🇰🇷 한국어</div>
-        <div class="lang-pill">🇸🇦 العربية</div>
-        <div class="lang-pill">🇮🇳 हिन्दी</div>
-        <div class="lang-pill">🇮🇩 Bahasa Indonesia</div>
-        <div class="lang-pill">🇻🇳 Tiếng Việt</div>
+    </div>
+
+    <!-- Marquee rows — full-width, outside container -->
+    <div class="marquee-stage">
+      <!-- Row 1: goes left (EN → PL) -->
+      <div class="marquee-row row-left">
+        <div class="marquee-track">
+          <span class="mpill">🇬🇧 English</span>
+          <span class="mpill">🇹🇷 Türkçe</span>
+          <span class="mpill">🇩🇪 Deutsch</span>
+          <span class="mpill">🇫🇷 Français</span>
+          <span class="mpill">🇪🇸 Español</span>
+          <span class="mpill">🇮🇹 Italiano</span>
+          <span class="mpill">🇧🇷 Português</span>
+          <span class="mpill">🇳🇱 Nederlands</span>
+          <span class="mpill">🇵🇱 Polski</span>
+          <!-- duplicate for seamless loop -->
+          <span class="mpill">🇬🇧 English</span>
+          <span class="mpill">🇹🇷 Türkçe</span>
+          <span class="mpill">🇩🇪 Deutsch</span>
+          <span class="mpill">🇫🇷 Français</span>
+          <span class="mpill">🇪🇸 Español</span>
+          <span class="mpill">🇮🇹 Italiano</span>
+          <span class="mpill">🇧🇷 Português</span>
+          <span class="mpill">🇳🇱 Nederlands</span>
+          <span class="mpill">🇵🇱 Polski</span>
+        </div>
+      </div>
+      <!-- Row 2: goes right (RU → VI) -->
+      <div class="marquee-row row-right">
+        <div class="marquee-track">
+          <span class="mpill">🇷🇺 Русский</span>
+          <span class="mpill">🇺🇦 Українська</span>
+          <span class="mpill">🇨🇳 中文</span>
+          <span class="mpill">🇯🇵 日本語</span>
+          <span class="mpill">🇰🇷 한국어</span>
+          <span class="mpill">🇸🇦 العربية</span>
+          <span class="mpill">🇮🇳 हिन्दी</span>
+          <span class="mpill">🇮🇩 Bahasa Indonesia</span>
+          <span class="mpill">🇻🇳 Tiếng Việt</span>
+          <!-- duplicate -->
+          <span class="mpill">🇷🇺 Русский</span>
+          <span class="mpill">🇺🇦 Українська</span>
+          <span class="mpill">🇨🇳 中文</span>
+          <span class="mpill">🇯🇵 日本語</span>
+          <span class="mpill">🇰🇷 한국어</span>
+          <span class="mpill">🇸🇦 العربية</span>
+          <span class="mpill">🇮🇳 हिन्दी</span>
+          <span class="mpill">🇮🇩 Bahasa Indonesia</span>
+          <span class="mpill">🇻🇳 Tiếng Việt</span>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- CTA / Signup -->
+  <!-- ── CTA / Signup ───────────────────────────────────────────────────── -->
   <section class="cta-section" id="try-free">
     <div class="container">
       <div class="cta-card glass-card fade-in">
         <div class="cta-glow"></div>
         <div class="cta-content">
-          <h2>Try Speechy Free</h2>
-          <p class="cta-subtitle">30-day free trial. No credit card required.</p>
+          <h2 data-i18n="cta.title">Try Speechy Free</h2>
+          <p class="cta-subtitle" data-i18n="cta.sub">30-day free trial. No credit card required.</p>
           <form id="signup-form" class="cta-form" novalidate>
             <div class="input-group">
               <svg class="input-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
                 <polyline points="22,6 12,13 2,6"/>
               </svg>
-              <input type="email" id="signup-email" placeholder="you@email.com" required autocomplete="email">
+              <input type="email" id="signup-email" data-i18n-placeholder="cta.email" placeholder="you@email.com" required autocomplete="email">
             </div>
             <div class="captcha-group" id="captcha-group">
               <div class="captcha-box">
@@ -274,7 +313,7 @@
               </div>
             </div>
             <button type="submit" class="btn btn-primary btn-cta" id="signup-btn">
-              <span class="btn-text">Start Free Trial</span>
+              <span class="btn-text" data-i18n="cta.btn">Start Free Trial</span>
               <span class="btn-spinner" style="display:none;">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5">
                   <circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-linecap="round">
@@ -291,35 +330,395 @@
     </div>
   </section>
 
-  <!-- Footer -->
+  <!-- ── Footer ────────────────────────────────────────────────────────── -->
   <footer class="footer" id="privacy">
     <div class="container">
       <div class="footer-content">
         <div class="footer-brand">
-          <svg class="logo-icon" viewBox="0 0 32 32" width="24" height="24">
-            <defs>
-              <linearGradient id="logoGradFooter" x1="0" y1="0" x2="32" y2="32">
-                <stop offset="0%" stop-color="#007AFF"/>
-                <stop offset="100%" stop-color="#AF52DE"/>
-              </linearGradient>
-            </defs>
-            <circle cx="16" cy="16" r="15" fill="url(#logoGradFooter)"/>
-            <path d="M16 8c-1.5 0-2.7 1.2-2.7 2.7v5.6c0 1.5 1.2 2.7 2.7 2.7s2.7-1.2 2.7-2.7v-5.6C18.7 9.2 17.5 8 16 8z" fill="white"/>
-            <path d="M21 15.5v.8c0 2.8-2.2 5-5 5s-5-2.2-5-5v-.8" stroke="white" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-            <line x1="16" y1="21.3" x2="16" y2="24" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
+          <img src="speechy-icon.png" width="24" height="24" alt="Speechy" style="border-radius:6px;">
           <span>Speechy</span>
         </div>
         <div class="footer-links">
           <a href="terms.html">Terms</a>
           <a href="privacy.html">Privacy Policy</a>
         </div>
-        <p class="footer-tagline">Privacy-First Voice Intelligence</p>
+        <p class="footer-tagline" data-i18n="footer.tagline">Privacy-First Voice Intelligence</p>
         <p class="footer-copy">&copy; 2026 Speechy. All rights reserved.</p>
       </div>
     </div>
   </footer>
 
   <script src="script.js"></script>
+
+  <!-- ── i18n ──────────────────────────────────────────────────────────── -->
+  <script>
+  (function() {
+    const T = {
+      en: {
+        'nav.features':'Features','nav.how':'How it Works','nav.privacy':'Privacy','nav.try':'Try Free',
+        'hero.title':'Your voice, instantly<br>as text.','hero.sub':'100% local AI. No cloud. No latency. Just speak.',
+        'hero.mac':'Download for Mac','hero.win_soon':'Windows — Coming Soon',
+        'hero.stat_lang':'Languages','hero.stat_speed':'Processing','hero.stat_cost':'Cloud Cost',
+        'hiw.title':'How it Works','hiw.sub':'Three steps. Zero complexity.',
+        'hiw.s1.title':'Press','hiw.s1.desc':'Hold your hotkey to start recording',
+        'hiw.s2.title':'Speak','hiw.s2.desc':'Talk naturally in any of 29 transcription languages',
+        'hiw.s3.title':'Done','hiw.s3.desc':'Text appears instantly in your active app',
+        'feat.title':'Why Speechy','feat.sub':'Built for people who care about privacy and speed.',
+        'feat.1.title':'100% Private','feat.1.desc':'All processing happens on your device. Your voice never leaves your Mac.',
+        'feat.2.title':'Lightning Fast','feat.2.desc':'Powered by Whisper AI. Transcription in under 3 seconds.',
+        'feat.3.title':'Fully Customizable','feat.3.desc':'Unlimited hotkeys, 2 AI models, 18 UI languages.',
+        'lang.sub':'The Speechy interface speaks your language — choose from 18 fully localized UI options.',
+        'cta.title':'Try Speechy Free','cta.sub':'30-day free trial. No credit card required.',
+        'cta.btn':'Start Free Trial','cta.email':'you@email.com',
+        'footer.tagline':'Privacy-First Voice Intelligence',
+      },
+      tr: {
+        'nav.features':'Özellikler','nav.how':'Nasıl Çalışır','nav.privacy':'Gizlilik','nav.try':'Ücretsiz Dene',
+        'hero.title':'Sesiniz, anında<br>metne dönüşür.','hero.sub':'%100 yerel yapay zeka. Bulut yok. Gecikme yok. Sadece konuşun.',
+        'hero.mac':'Mac için İndir','hero.win_soon':'Windows — Yakında',
+        'hero.stat_lang':'Dil','hero.stat_speed':'İşlem Süresi','hero.stat_cost':'Bulut Maliyeti',
+        'hiw.title':'Nasıl Çalışır','hiw.sub':'Üç adım. Sıfır karmaşıklık.',
+        'hiw.s1.title':'Bas','hiw.s1.desc':'Kayıt başlatmak için kısayol tuşuna basılı tutun',
+        'hiw.s2.title':'Konuş','hiw.s2.desc':'29 dilde doğal konuşun',
+        'hiw.s3.title':'Hazır','hiw.s3.desc':'Metin aktif uygulamanızda anında görünür',
+        'feat.title':'Neden Speechy','feat.sub':'Gizlilik ve hız önem verenler için.',
+        'feat.1.title':'%100 Özel','feat.1.desc':'Tüm işlemler cihazınızda gerçekleşir. Sesiniz Mac\'inizden hiç çıkmaz.',
+        'feat.2.title':'Yıldırım Hızlı','feat.2.desc':'Whisper AI ile güçlendirilmiş. 3 saniyeden az.',
+        'feat.3.title':'Tamamen Özelleştirilebilir','feat.3.desc':'Sınırsız kısayol, 2 AI modeli, 18 UI dili.',
+        'lang.sub':'Speechy arayüzü sizin dilinizi konuşur — 18 tam yerelleştirilmiş seçenek.',
+        'cta.title':'Speechy\'yi Ücretsiz Deneyin','cta.sub':'30 günlük deneme. Kredi kartı gerekmez.',
+        'cta.btn':'Ücretsiz Denemeyi Başlat','cta.email':'siz@email.com',
+        'footer.tagline':'Gizlilik Odaklı Ses Zekası',
+      },
+      de: {
+        'nav.features':'Funktionen','nav.how':'So funktionierts','nav.privacy':'Datenschutz','nav.try':'Kostenlos testen',
+        'hero.title':'Ihre Stimme, sofort<br>als Text.','hero.sub':'100% lokale KI. Keine Cloud. Keine Verzögerung. Einfach sprechen.',
+        'hero.mac':'Für Mac herunterladen','hero.win_soon':'Windows — Demnächst',
+        'hero.stat_lang':'Sprachen','hero.stat_speed':'Verarbeitung','hero.stat_cost':'Cloud-Kosten',
+        'hiw.title':'So funktioniert es','hiw.sub':'Drei Schritte. Null Komplexität.',
+        'hiw.s1.title':'Drücken','hiw.s1.desc':'Halte deinen Hotkey gedrückt, um die Aufnahme zu starten',
+        'hiw.s2.title':'Sprechen','hiw.s2.desc':'Sprich natürlich in einer von 29 Sprachen',
+        'hiw.s3.title':'Fertig','hiw.s3.desc':'Text erscheint sofort in deiner aktiven App',
+        'feat.title':'Warum Speechy','feat.sub':'Für alle, denen Datenschutz und Geschwindigkeit wichtig sind.',
+        'feat.1.title':'100% Privat','feat.1.desc':'Alle Verarbeitung erfolgt auf deinem Gerät. Deine Stimme verlässt nie deinen Mac.',
+        'feat.2.title':'Blitzschnell','feat.2.desc':'Angetrieben von Whisper AI. Transkription in unter 3 Sekunden.',
+        'feat.3.title':'Vollständig anpassbar','feat.3.desc':'Unbegrenzte Hotkeys, 2 KI-Modelle, 18 UI-Sprachen.',
+        'lang.sub':'Die Speechy-Oberfläche spricht deine Sprache — 18 vollständig lokalisierte UI-Optionen.',
+        'cta.title':'Speechy kostenlos testen','cta.sub':'30 Tage kostenlos. Keine Kreditkarte erforderlich.',
+        'cta.btn':'Kostenlose Testversion starten','cta.email':'du@email.com',
+        'footer.tagline':'Datenschutz-zuerst Sprachintelligenz',
+      },
+      fr: {
+        'nav.features':'Fonctionnalités','nav.how':'Comment ça marche','nav.privacy':'Confidentialité','nav.try':'Essai gratuit',
+        'hero.title':'Votre voix, instantanément<br>en texte.','hero.sub':'IA 100% locale. Pas de cloud. Pas de latence. Parlez, c\'est tout.',
+        'hero.mac':'Télécharger pour Mac','hero.win_soon':'Windows — Bientôt',
+        'hero.stat_lang':'Langues','hero.stat_speed':'Traitement','hero.stat_cost':'Coût Cloud',
+        'hiw.title':'Comment ça marche','hiw.sub':'Trois étapes. Zéro complexité.',
+        'hiw.s1.title':'Appuyer','hiw.s1.desc':'Maintenez votre raccourci pour démarrer l\'enregistrement',
+        'hiw.s2.title':'Parler','hiw.s2.desc':'Parlez naturellement dans 29 langues',
+        'hiw.s3.title':'Terminé','hiw.s3.desc':'Le texte apparaît instantanément dans votre app active',
+        'feat.title':'Pourquoi Speechy','feat.sub':'Conçu pour ceux qui tiennent à la confidentialité et à la vitesse.',
+        'feat.1.title':'100% Privé','feat.1.desc':'Tout se passe sur votre appareil. Votre voix ne quitte jamais votre Mac.',
+        'feat.2.title':'Ultra Rapide','feat.2.desc':'Propulsé par Whisper AI. Transcription en moins de 3 secondes.',
+        'feat.3.title':'Entièrement personnalisable','feat.3.desc':'Raccourcis illimités, 2 modèles IA, 18 langues UI.',
+        'lang.sub':'L\'interface Speechy parle votre langue — 18 options d\'UI entièrement localisées.',
+        'cta.title':'Essayez Speechy gratuitement','cta.sub':'30 jours d\'essai. Sans carte bancaire.',
+        'cta.btn':'Commencer l\'essai gratuit','cta.email':'vous@email.com',
+        'footer.tagline':'Intelligence Vocale Axée sur la Confidentialité',
+      },
+      es: {
+        'nav.features':'Características','nav.how':'Cómo funciona','nav.privacy':'Privacidad','nav.try':'Prueba gratis',
+        'hero.title':'Tu voz, al instante<br>como texto.','hero.sub':'IA 100% local. Sin cloud. Sin latencia. Solo habla.',
+        'hero.mac':'Descargar para Mac','hero.win_soon':'Windows — Próximamente',
+        'hero.stat_lang':'Idiomas','hero.stat_speed':'Procesamiento','hero.stat_cost':'Costo Cloud',
+        'hiw.title':'Cómo funciona','hiw.sub':'Tres pasos. Cero complejidad.',
+        'hiw.s1.title':'Presiona','hiw.s1.desc':'Mantén tu atajo para iniciar la grabación',
+        'hiw.s2.title':'Habla','hiw.s2.desc':'Habla con naturalidad en 29 idiomas',
+        'hiw.s3.title':'Listo','hiw.s3.desc':'El texto aparece al instante en tu app activa',
+        'feat.title':'Por qué Speechy','feat.sub':'Para quienes valoran la privacidad y la velocidad.',
+        'feat.1.title':'100% Privado','feat.1.desc':'Todo el procesamiento ocurre en tu dispositivo. Tu voz nunca sale de tu Mac.',
+        'feat.2.title':'Ultrarrápido','feat.2.desc':'Impulsado por Whisper AI. Transcripción en menos de 3 segundos.',
+        'feat.3.title':'Totalmente personalizable','feat.3.desc':'Atajos ilimitados, 2 modelos IA, 18 idiomas UI.',
+        'lang.sub':'La interfaz de Speechy habla tu idioma — 18 opciones de UI completamente localizadas.',
+        'cta.title':'Prueba Speechy gratis','cta.sub':'30 días de prueba. Sin tarjeta de crédito.',
+        'cta.btn':'Iniciar prueba gratuita','cta.email':'tu@email.com',
+        'footer.tagline':'Inteligencia de Voz con Privacidad Primero',
+      },
+      it: {
+        'nav.features':'Funzionalità','nav.how':'Come funziona','nav.privacy':'Privacy','nav.try':'Prova gratis',
+        'hero.title':'La tua voce, subito<br>come testo.','hero.sub':'IA 100% locale. Nessun cloud. Zero latenza. Basta parlare.',
+        'hero.mac':'Scarica per Mac','hero.win_soon':'Windows — Presto',
+        'hero.stat_lang':'Lingue','hero.stat_speed':'Elaborazione','hero.stat_cost':'Costo Cloud',
+        'hiw.title':'Come funziona','hiw.sub':'Tre passi. Zero complessità.',
+        'hiw.s1.title':'Premi','hiw.s1.desc':'Tieni premuto il tasto rapido per avviare la registrazione',
+        'hiw.s2.title':'Parla','hiw.s2.desc':'Parla naturalmente in 29 lingue',
+        'hiw.s3.title':'Fatto','hiw.s3.desc':'Il testo appare immediatamente nella tua app attiva',
+        'feat.title':'Perché Speechy','feat.sub':'Per chi tiene alla privacy e alla velocità.',
+        'feat.1.title':'100% Privato','feat.1.desc':'Tutto avviene sul tuo dispositivo. La tua voce non lascia mai il tuo Mac.',
+        'feat.2.title':'Velocissimo','feat.2.desc':'Alimentato da Whisper AI. Trascrizione in meno di 3 secondi.',
+        'feat.3.title':'Completamente personalizzabile','feat.3.desc':'Tasti rapidi illimitati, 2 modelli IA, 18 lingue UI.',
+        'lang.sub':'L\'interfaccia di Speechy parla la tua lingua — 18 opzioni UI completamente localizzate.',
+        'cta.title':'Prova Speechy gratis','cta.sub':'30 giorni di prova. Nessuna carta di credito.',
+        'cta.btn':'Inizia la prova gratuita','cta.email':'tu@email.com',
+        'footer.tagline':'Intelligenza Vocale Privacy-First',
+      },
+      pt: {
+        'nav.features':'Recursos','nav.how':'Como funciona','nav.privacy':'Privacidade','nav.try':'Teste grátis',
+        'hero.title':'Sua voz, instantaneamente<br>em texto.','hero.sub':'IA 100% local. Sem cloud. Sem latência. Basta falar.',
+        'hero.mac':'Baixar para Mac','hero.win_soon':'Windows — Em breve',
+        'hero.stat_lang':'Idiomas','hero.stat_speed':'Processamento','hero.stat_cost':'Custo Cloud',
+        'hiw.title':'Como funciona','hiw.sub':'Três passos. Zero complexidade.',
+        'hiw.s1.title':'Pressionar','hiw.s1.desc':'Segure seu atalho para iniciar a gravação',
+        'hiw.s2.title':'Falar','hiw.s2.desc':'Fale naturalmente em 29 idiomas',
+        'hiw.s3.title':'Pronto','hiw.s3.desc':'O texto aparece instantaneamente no seu app ativo',
+        'feat.title':'Por que Speechy','feat.sub':'Para quem valoriza privacidade e velocidade.',
+        'feat.1.title':'100% Privado','feat.1.desc':'Todo o processamento acontece no seu dispositivo.',
+        'feat.2.title':'Ultrarrápido','feat.2.desc':'Alimentado pelo Whisper AI. Transcrição em menos de 3 segundos.',
+        'feat.3.title':'Totalmente personalizável','feat.3.desc':'Atalhos ilimitados, 2 modelos IA, 18 idiomas UI.',
+        'lang.sub':'A interface do Speechy fala o seu idioma — 18 opções de UI totalmente localizadas.',
+        'cta.title':'Experimente o Speechy grátis','cta.sub':'30 dias de teste. Sem cartão de crédito.',
+        'cta.btn':'Iniciar teste gratuito','cta.email':'voce@email.com',
+        'footer.tagline':'Inteligência de Voz com Privacidade em Primeiro',
+      },
+      nl: {
+        'nav.features':'Functies','nav.how':'Hoe het werkt','nav.privacy':'Privacy','nav.try':'Gratis proberen',
+        'hero.title':'Jouw stem, direct<br>als tekst.','hero.sub':'100% lokale AI. Geen cloud. Geen vertraging. Spreek gewoon.',
+        'hero.mac':'Downloaden voor Mac','hero.win_soon':'Windows — Binnenkort',
+        'hero.stat_lang':'Talen','hero.stat_speed':'Verwerking','hero.stat_cost':'Cloud-kosten',
+        'hiw.title':'Hoe het werkt','hiw.sub':'Drie stappen. Nul complexiteit.',
+        'hiw.s1.title':'Drukken','hiw.s1.desc':'Houd je sneltoets ingedrukt om de opname te starten',
+        'hiw.s2.title':'Spreken','hiw.s2.desc':'Spreek natuurlijk in 29 talen',
+        'hiw.s3.title':'Klaar','hiw.s3.desc':'Tekst verschijnt direct in je actieve app',
+        'feat.title':'Waarom Speechy','feat.sub':'Voor wie privacy en snelheid belangrijk vindt.',
+        'feat.1.title':'100% Privé','feat.1.desc':'Alle verwerking gebeurt op je apparaat. Je stem verlaat nooit je Mac.',
+        'feat.2.title':'Bliksemnel','feat.2.desc':'Aangedreven door Whisper AI. Transcriptie in minder dan 3 seconden.',
+        'feat.3.title':'Volledig aanpasbaar','feat.3.desc':'Onbeperkte sneltoetsen, 2 AI-modellen, 18 UI-talen.',
+        'lang.sub':'De Speechy-interface spreekt jouw taal — 18 volledig gelokaliseerde UI-opties.',
+        'cta.title':'Speechy gratis proberen','cta.sub':'30 dagen gratis. Geen creditcard nodig.',
+        'cta.btn':'Gratis proefperiode starten','cta.email':'jij@email.com',
+        'footer.tagline':'Privacy-Eerste Spraakintelligenties',
+      },
+      pl: {
+        'nav.features':'Funkcje','nav.how':'Jak to działa','nav.privacy':'Prywatność','nav.try':'Wypróbuj',
+        'hero.title':'Twój głos, natychmiast<br>jako tekst.','hero.sub':'100% lokalna AI. Bez chmury. Bez opóźnień. Po prostu mów.',
+        'hero.mac':'Pobierz dla Mac','hero.win_soon':'Windows — Wkrótce',
+        'hero.stat_lang':'Języki','hero.stat_speed':'Przetwarzanie','hero.stat_cost':'Koszt chmury',
+        'hiw.title':'Jak to działa','hiw.sub':'Trzy kroki. Zero złożoności.',
+        'hiw.s1.title':'Naciśnij','hiw.s1.desc':'Przytrzymaj skrót, aby rozpocząć nagrywanie',
+        'hiw.s2.title':'Mów','hiw.s2.desc':'Mów naturalnie w 29 językach',
+        'hiw.s3.title':'Gotowe','hiw.s3.desc':'Tekst pojawia się natychmiast w aktywnej aplikacji',
+        'feat.title':'Dlaczego Speechy','feat.sub':'Dla tych, którym zależy na prywatności i szybkości.',
+        'feat.1.title':'100% Prywatny','feat.1.desc':'Całe przetwarzanie odbywa się na Twoim urządzeniu.',
+        'feat.2.title':'Błyskawiczny','feat.2.desc':'Oparty na Whisper AI. Transkrypcja w mniej niż 3 sekundy.',
+        'feat.3.title':'W pełni konfigurowalny','feat.3.desc':'Nieograniczone skróty, 2 modele AI, 18 języków UI.',
+        'lang.sub':'Interfejs Speechy mówi Twoim językiem — 18 w pełni zlokalizowanych opcji UI.',
+        'cta.title':'Wypróbuj Speechy za darmo','cta.sub':'30-dniowy bezpłatny okres próbny. Bez karty kredytowej.',
+        'cta.btn':'Rozpocznij bezpłatny okres próbny','cta.email':'ty@email.com',
+        'footer.tagline':'Inteligencja Głosowa z Prywatnością na Pierwszym Miejscu',
+      },
+      ru: {
+        'nav.features':'Функции','nav.how':'Как это работает','nav.privacy':'Конфиденциальность','nav.try':'Попробовать',
+        'hero.title':'Ваш голос, мгновенно<br>как текст.','hero.sub':'100% локальный ИИ. Без облака. Без задержек. Просто говорите.',
+        'hero.mac':'Скачать для Mac','hero.win_soon':'Windows — Скоро',
+        'hero.stat_lang':'Языки','hero.stat_speed':'Обработка','hero.stat_cost':'Стоимость Cloud',
+        'hiw.title':'Как это работает','hiw.sub':'Три шага. Ноль сложности.',
+        'hiw.s1.title':'Нажать','hiw.s1.desc':'Удерживайте горячую клавишу для начала записи',
+        'hiw.s2.title':'Говорить','hiw.s2.desc':'Говорите на 29 языках',
+        'hiw.s3.title':'Готово','hiw.s3.desc':'Текст мгновенно появляется в вашем активном приложении',
+        'feat.title':'Почему Speechy','feat.sub':'Для тех, кто ценит конфиденциальность и скорость.',
+        'feat.1.title':'100% Приватный','feat.1.desc':'Вся обработка происходит на вашем устройстве.',
+        'feat.2.title':'Молниеносный','feat.2.desc':'Работает на Whisper AI. Транскрипция менее чем за 3 секунды.',
+        'feat.3.title':'Полностью настраиваемый','feat.3.desc':'Неограниченные горячие клавиши, 2 модели ИИ, 18 языков UI.',
+        'lang.sub':'Интерфейс Speechy говорит на вашем языке — 18 полностью локализованных вариантов.',
+        'cta.title':'Попробуйте Speechy бесплатно','cta.sub':'30 дней бесплатно. Без кредитной карты.',
+        'cta.btn':'Начать бесплатный пробный период','cta.email':'вы@email.com',
+        'footer.tagline':'Голосовой Интеллект с Приоритетом Конфиденциальности',
+      },
+      uk: {
+        'nav.features':'Функції','nav.how':'Як це працює','nav.privacy':'Конфіденційність','nav.try':'Спробувати',
+        'hero.title':'Ваш голос, миттєво<br>як текст.','hero.sub':'100% локальний ШІ. Без хмари. Без затримок. Просто говоріть.',
+        'hero.mac':'Завантажити для Mac','hero.win_soon':'Windows — Незабаром',
+        'hiw.title':'Як це працює','hiw.sub':'Три кроки. Нуль складності.',
+        'hiw.s1.title':'Натиснути','hiw.s1.desc':'Утримуйте гарячу клавішу для початку запису',
+        'hiw.s2.title':'Говорити','hiw.s2.desc':'Говоріть природно 29 мовами',
+        'hiw.s3.title':'Готово','hiw.s3.desc':'Текст миттєво з\'являється у вашому активному застосунку',
+        'feat.title':'Чому Speechy','feat.sub':'Для тих, хто цінує конфіденційність і швидкість.',
+        'feat.1.title':'100% Приватний','feat.1.desc':'Вся обробка відбувається на вашому пристрої.',
+        'feat.2.title':'Блискавичний','feat.2.desc':'На основі Whisper AI. Транскрипція менш ніж за 3 секунди.',
+        'feat.3.title':'Повністю налаштований','feat.3.desc':'Необмежені гарячі клавіші, 2 моделі ШІ, 18 мов UI.',
+        'lang.sub':'Інтерфейс Speechy розмовляє вашою мовою — 18 повністю локалізованих варіантів.',
+        'cta.title':'Спробуйте Speechy безкоштовно','cta.sub':'30 днів безкоштовно. Без кредитної картки.',
+        'cta.btn':'Почати безкоштовний пробний період','cta.email':'ви@email.com',
+        'footer.tagline':'Голосовий Інтелект з Пріоритетом Конфіденційності',
+      },
+      zh: {
+        'nav.features':'功能','nav.how':'工作原理','nav.privacy':'隐私','nav.try':'免费试用',
+        'hero.title':'您的声音，即时<br>转为文字。','hero.sub':'100% 本地 AI。无云端。无延迟。只需说话。',
+        'hero.mac':'下载 Mac 版','hero.win_soon':'Windows — 即将推出',
+        'hero.stat_lang':'语言','hero.stat_speed':'处理速度','hero.stat_cost':'云端费用',
+        'hiw.title':'工作原理','hiw.sub':'三步完成。零复杂度。',
+        'hiw.s1.title':'按下','hiw.s1.desc':'按住快捷键开始录音',
+        'hiw.s2.title':'说话','hiw.s2.desc':'用 29 种语言自然说话',
+        'hiw.s3.title':'完成','hiw.s3.desc':'文字立即出现在您的活跃应用中',
+        'feat.title':'为什么选择 Speechy','feat.sub':'专为注重隐私和速度的用户设计。',
+        'feat.1.title':'100% 私密','feat.1.desc':'所有处理在您的设备上进行，您的声音永远不会离开您的 Mac。',
+        'feat.2.title':'闪电快速','feat.2.desc':'由 Whisper AI 驱动，3 秒内完成转录。',
+        'feat.3.title':'完全可定制','feat.3.desc':'无限快捷键、2 个 AI 模型、18 种 UI 语言。',
+        'lang.sub':'Speechy 界面说您的语言 — 18 种完全本地化的 UI 选项。',
+        'cta.title':'免费试用 Speechy','cta.sub':'30 天免费试用。无需信用卡。',
+        'cta.btn':'开始免费试用','cta.email':'您@email.com',
+        'footer.tagline':'隐私优先的语音智能',
+      },
+      ja: {
+        'nav.features':'機能','nav.how':'使い方','nav.privacy':'プライバシー','nav.try':'無料で試す',
+        'hero.title':'あなたの声が、すぐに<br>テキストになる。','hero.sub':'100%ローカルAI。クラウド不要。遅延ゼロ。話すだけ。',
+        'hero.mac':'Mac 版をダウンロード','hero.win_soon':'Windows — 近日公開',
+        'hero.stat_lang':'言語','hero.stat_speed':'処理速度','hero.stat_cost':'クラウドコスト',
+        'hiw.title':'使い方','hiw.sub':'3つのステップ。ゼロの複雑さ。',
+        'hiw.s1.title':'押す','hiw.s1.desc':'ホットキーを押し続けて録音を開始',
+        'hiw.s2.title':'話す','hiw.s2.desc':'29の言語で自然に話す',
+        'hiw.s3.title':'完了','hiw.s3.desc':'テキストがアクティブなアプリに即座に表示される',
+        'feat.title':'Speechy を選ぶ理由','feat.sub':'プライバシーと速度を重視する方のために。',
+        'feat.1.title':'100% プライベート','feat.1.desc':'すべての処理はデバイス上で行われます。',
+        'feat.2.title':'超高速','feat.2.desc':'Whisper AI 搭載。3秒以内に文字起こし。',
+        'feat.3.title':'完全カスタマイズ可能','feat.3.desc':'無制限のホットキー、2つのAIモデル、18のUI言語。',
+        'lang.sub':'Speechy のインターフェースはあなたの言語を話します — 18の完全ローカライズ UI オプション。',
+        'cta.title':'Speechy を無料で試す','cta.sub':'30日間無料トライアル。クレジットカード不要。',
+        'cta.btn':'無料トライアルを開始','cta.email':'あなた@email.com',
+        'footer.tagline':'プライバシーファーストの音声インテリジェンス',
+      },
+      ko: {
+        'nav.features':'기능','nav.how':'사용 방법','nav.privacy':'개인정보','nav.try':'무료 체험',
+        'hero.title':'당신의 목소리가, 즉시<br>텍스트로.','hero.sub':'100% 로컬 AI. 클라우드 없음. 지연 없음. 그냥 말하세요.',
+        'hero.mac':'Mac용 다운로드','hero.win_soon':'Windows — 출시 예정',
+        'hero.stat_lang':'언어','hero.stat_speed':'처리 속도','hero.stat_cost':'클라우드 비용',
+        'hiw.title':'사용 방법','hiw.sub':'세 단계. 복잡함 없음.',
+        'hiw.s1.title':'누르기','hiw.s1.desc':'녹음을 시작하려면 단축키를 누르고 유지하세요',
+        'hiw.s2.title':'말하기','hiw.s2.desc':'29개 언어로 자연스럽게 말하세요',
+        'hiw.s3.title':'완료','hiw.s3.desc':'텍스트가 활성 앱에 즉시 나타납니다',
+        'feat.title':'왜 Speechy인가','feat.sub':'개인정보와 속도를 중시하는 분들을 위해.',
+        'feat.1.title':'100% 비공개','feat.1.desc':'모든 처리는 기기에서 이루어집니다.',
+        'feat.2.title':'번개같이 빠름','feat.2.desc':'Whisper AI 기반. 3초 이내 텍스트 변환.',
+        'feat.3.title':'완전 맞춤화','feat.3.desc':'무제한 단축키, 2개 AI 모델, 18개 UI 언어.',
+        'lang.sub':'Speechy 인터페이스는 당신의 언어를 말합니다 — 18개의 완전 현지화 UI 옵션.',
+        'cta.title':'Speechy 무료 체험','cta.sub':'30일 무료 체험. 신용카드 불필요.',
+        'cta.btn':'무료 체험 시작','cta.email':'당신@email.com',
+        'footer.tagline':'개인정보 우선 음성 지능',
+      },
+      ar: {
+        'nav.features':'المميزات','nav.how':'كيف يعمل','nav.privacy':'الخصوصية','nav.try':'جرّب مجاناً',
+        'hero.title':'صوتك، فوراً<br>كنص.','hero.sub':'ذكاء اصطناعي محلي 100٪. بدون سحابة. بدون تأخير. فقط تحدث.',
+        'hero.mac':'تنزيل للـ Mac','hero.win_soon':'Windows — قريباً',
+        'hero.stat_lang':'اللغات','hero.stat_speed':'المعالجة','hero.stat_cost':'تكلفة السحابة',
+        'hiw.title':'كيف يعمل','hiw.sub':'ثلاث خطوات. صفر تعقيد.',
+        'hiw.s1.title':'اضغط','hiw.s1.desc':'اضغط مطولاً على اختصار لبدء التسجيل',
+        'hiw.s2.title':'تحدث','hiw.s2.desc':'تحدث بشكل طبيعي بـ 29 لغة',
+        'hiw.s3.title':'تم','hiw.s3.desc':'يظهر النص فوراً في تطبيقك النشط',
+        'feat.title':'لماذا Speechy','feat.sub':'مصمم لمن يهتمون بالخصوصية والسرعة.',
+        'feat.1.title':'100٪ خاص','feat.1.desc':'تتم المعالجة على جهازك. صوتك لا يغادر جهاز Mac أبداً.',
+        'feat.2.title':'سريع البرق','feat.2.desc':'مدعوم بـ Whisper AI. النسخ في أقل من 3 ثوان.',
+        'feat.3.title':'قابل للتخصيص بالكامل','feat.3.desc':'اختصارات غير محدودة، نموذجان للذكاء الاصطناعي، 18 لغة UI.',
+        'lang.sub':'واجهة Speechy تتحدث لغتك — 18 خياراً للواجهة مترجماً بالكامل.',
+        'cta.title':'جرّب Speechy مجاناً','cta.sub':'تجربة مجانية 30 يوماً. لا بطاقة ائتمانية.',
+        'cta.btn':'ابدأ التجربة المجانية','cta.email':'أنت@email.com',
+        'footer.tagline':'ذكاء صوتي مع الخصوصية أولاً',
+      },
+      hi: {
+        'nav.features':'विशेषताएं','nav.how':'कैसे काम करता है','nav.privacy':'गोपनीयता','nav.try':'मुफ़्त आज़माएं',
+        'hero.title':'आपकी आवाज़, तुरंत<br>टेक्स्ट में।','hero.sub':'100% लोकल AI। कोई क्लाउड नहीं। कोई देरी नहीं। बस बोलें।',
+        'hero.mac':'Mac के लिए डाउनलोड','hero.win_soon':'Windows — जल्द आ रहा है',
+        'hiw.title':'कैसे काम करता है','hiw.sub':'तीन कदम। शून्य जटिलता।',
+        'hiw.s1.title':'दबाएं','hiw.s1.desc':'रिकॉर्डिंग शुरू करने के लिए हॉटकी दबाए रखें',
+        'hiw.s2.title':'बोलें','hiw.s2.desc':'29 भाषाओं में स्वाभाविक रूप से बोलें',
+        'hiw.s3.title':'हो गया','hiw.s3.desc':'टेक्स्ट आपके सक्रिय ऐप में तुरंत दिखाई देता है',
+        'feat.title':'Speechy क्यों','feat.sub':'गोपनीयता और गति की परवाह करने वालों के लिए।',
+        'feat.1.title':'100% निजी','feat.1.desc':'सारी प्रक्रिया आपके डिवाइस पर होती है।',
+        'feat.2.title':'बिजली जैसा तेज़','feat.2.desc':'Whisper AI द्वारा संचालित। 3 सेकंड से कम में ट्रांसक्रिप्शन।',
+        'feat.3.title':'पूरी तरह अनुकूलन योग्य','feat.3.desc':'असीमित हॉटकी, 2 AI मॉडल, 18 UI भाषाएं।',
+        'lang.sub':'Speechy इंटरफ़ेस आपकी भाषा बोलता है — 18 पूरी तरह से स्थानीयकृत UI विकल्प।',
+        'cta.title':'Speechy मुफ़्त आज़माएं','cta.sub':'30 दिन का मुफ़्त ट्रायल। क्रेडिट कार्ड की ज़रूरत नहीं।',
+        'cta.btn':'मुफ़्त ट्रायल शुरू करें','cta.email':'आप@email.com',
+        'footer.tagline':'गोपनीयता-प्रथम वॉयस इंटेलिजेंस',
+      },
+      id: {
+        'nav.features':'Fitur','nav.how':'Cara Kerja','nav.privacy':'Privasi','nav.try':'Coba Gratis',
+        'hero.title':'Suara Anda, langsung<br>jadi teks.','hero.sub':'AI 100% lokal. Tanpa cloud. Tanpa latensi. Cukup bicara.',
+        'hero.mac':'Unduh untuk Mac','hero.win_soon':'Windows — Segera Hadir',
+        'hiw.title':'Cara Kerja','hiw.sub':'Tiga langkah. Tanpa kerumitan.',
+        'hiw.s1.title':'Tekan','hiw.s1.desc':'Tahan tombol pintasan untuk memulai perekaman',
+        'hiw.s2.title':'Bicara','hiw.s2.desc':'Bicara alami dalam 29 bahasa',
+        'hiw.s3.title':'Selesai','hiw.s3.desc':'Teks muncul seketika di aplikasi aktif Anda',
+        'feat.title':'Mengapa Speechy','feat.sub':'Dibangun untuk yang peduli privasi dan kecepatan.',
+        'feat.1.title':'100% Privat','feat.1.desc':'Semua pemrosesan terjadi di perangkat Anda.',
+        'feat.2.title':'Super Cepat','feat.2.desc':'Didukung Whisper AI. Transkripsi dalam 3 detik.',
+        'feat.3.title':'Sepenuhnya Dapat Dikustomisasi','feat.3.desc':'Pintasan tak terbatas, 2 model AI, 18 bahasa UI.',
+        'lang.sub':'Antarmuka Speechy berbicara bahasa Anda — 18 opsi UI yang sepenuhnya terlokalisasi.',
+        'cta.title':'Coba Speechy Gratis','cta.sub':'Uji coba gratis 30 hari. Tidak perlu kartu kredit.',
+        'cta.btn':'Mulai Uji Coba Gratis','cta.email':'anda@email.com',
+        'footer.tagline':'Kecerdasan Suara Berbasis Privasi',
+      },
+      vi: {
+        'nav.features':'Tính năng','nav.how':'Cách hoạt động','nav.privacy':'Quyền riêng tư','nav.try':'Dùng thử miễn phí',
+        'hero.title':'Giọng nói của bạn,<br>ngay lập tức thành văn bản.','hero.sub':'AI 100% cục bộ. Không cloud. Không độ trễ. Chỉ cần nói.',
+        'hero.mac':'Tải về cho Mac','hero.win_soon':'Windows — Sắp ra mắt',
+        'hiw.title':'Cách hoạt động','hiw.sub':'Ba bước. Không phức tạp.',
+        'hiw.s1.title':'Nhấn','hiw.s1.desc':'Giữ phím tắt để bắt đầu ghi âm',
+        'hiw.s2.title':'Nói','hiw.s2.desc':'Nói tự nhiên bằng 29 ngôn ngữ',
+        'hiw.s3.title':'Xong','hiw.s3.desc':'Văn bản xuất hiện ngay lập tức trong ứng dụng đang hoạt động',
+        'feat.title':'Tại sao chọn Speechy','feat.sub':'Được xây dựng cho những người quan tâm đến quyền riêng tư và tốc độ.',
+        'feat.1.title':'100% Riêng tư','feat.1.desc':'Mọi xử lý diễn ra trên thiết bị của bạn.',
+        'feat.2.title':'Nhanh như chớp','feat.2.desc':'Được hỗ trợ bởi Whisper AI. Chuyển văn bản trong 3 giây.',
+        'feat.3.title':'Hoàn toàn tùy chỉnh','feat.3.desc':'Phím tắt không giới hạn, 2 mô hình AI, 18 ngôn ngữ UI.',
+        'lang.sub':'Giao diện Speechy nói ngôn ngữ của bạn — 18 tùy chọn UI được bản địa hóa hoàn toàn.',
+        'cta.title':'Dùng thử Speechy miễn phí','cta.sub':'Dùng thử miễn phí 30 ngày. Không cần thẻ tín dụng.',
+        'cta.btn':'Bắt đầu dùng thử miễn phí','cta.email':'ban@email.com',
+        'footer.tagline':'Trí tuệ Giọng nói Ưu tiên Quyền riêng tư',
+      },
+    };
+
+    // RTL languages
+    const RTL = ['ar'];
+
+    function applyLang(code) {
+      const dict = T[code] || T['en'];
+      const fallback = T['en'];
+
+      // Update all [data-i18n] elements
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        const val = dict[key] || fallback[key];
+        if (val) el.innerHTML = val;
+      });
+
+      // Update placeholders
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        const val = dict[key] || fallback[key];
+        if (val) el.placeholder = val;
+      });
+
+      // Active button
+      document.querySelectorAll('.lb-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.lang === code);
+      });
+
+      // RTL
+      document.documentElement.setAttribute('lang', code);
+      document.documentElement.setAttribute('dir', RTL.includes(code) ? 'rtl' : 'ltr');
+
+      localStorage.setItem('speechy_lang', code);
+    }
+
+    // Bind buttons
+    document.querySelectorAll('.lb-btn').forEach(btn => {
+      btn.addEventListener('click', () => applyLang(btn.dataset.lang));
+    });
+
+    // Restore saved lang
+    const saved = localStorage.getItem('speechy_lang') || 'en';
+    applyLang(saved);
+  })();
+  </script>
+
 </body>
 </html>
