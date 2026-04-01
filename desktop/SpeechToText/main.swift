@@ -5593,7 +5593,21 @@ class WhisperTranscriber {
             if ok { return path }
         }
         log("[Speechy] WARNING: whisper-cli not found in any known path")
+        DispatchQueue.main.async { self.showWhisperNotInstalledAlert() }
         return candidates[0]
+    }
+
+    private func showWhisperNotInstalledAlert() {
+        let alert = NSAlert()
+        alert.messageText = "whisper-cli Not Found"
+        alert.informativeText = "Speechy requires whisper-cpp to transcribe audio.\n\nInstall it with Homebrew:\n\n  brew install whisper-cpp\n\nThen restart Speechy."
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "Copy Command")
+        alert.addButton(withTitle: "OK")
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString("brew install whisper-cpp", forType: .string)
+        }
     }
 
     private func findWhisperViaPATH() -> String? {
@@ -5788,6 +5802,10 @@ class WhisperTranscriber {
                 }
             } catch {
                 log("[Speechy] Whisper error: \(error)")
+                let desc = (error as NSError).localizedDescription
+                if desc.contains("doesn't exist") || desc.contains("does not exist") || (error as NSError).code == 4 {
+                    DispatchQueue.main.async { self.showWhisperNotInstalledAlert() }
+                }
                 completion(nil)
             }
         }
