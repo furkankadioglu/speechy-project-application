@@ -4554,6 +4554,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         log("[Speechy] App starting...")
 
+        // Detect Intel Mac and warn once
+        #if arch(x86_64)
+        let intelWarnKey = "intelPerfWarnShown"
+        if !UserDefaults.standard.bool(forKey: intelWarnKey) {
+            UserDefaults.standard.set(true, forKey: intelWarnKey)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                let alert = NSAlert()
+                alert.messageText = "Intel Mac Detected"
+                alert.informativeText = "Speechy works on Intel Macs, but transcription will be slower (30–90 seconds per recording) because GPU acceleration is only available on Apple Silicon.\n\nMedium model is still recommended for accuracy."
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "Got it")
+                alert.runModal()
+            }
+        }
+        #endif
+
         // Apply dock visibility from saved preference (default: visible)
         let showInDock = UserDefaults.standard.object(forKey: "showInDock") as? Bool ?? true
         NSApp.setActivationPolicy(showInDock ? .regular : .accessory)
@@ -5792,9 +5808,14 @@ class WhisperTranscriber {
 
                 let exitCode = process.terminationStatus
                 let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+                let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
                 let rawText = (String(data: data, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let errText = (String(data: errData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 
                 log("[Speechy] Whisper exit: \(exitCode)")
+                if !errText.isEmpty {
+                    log("[Speechy] Whisper stderr: \(errText.prefix(300))")
+                }
                 log("[Speechy] Raw result: \(rawText.isEmpty ? "(empty)" : String(rawText.prefix(80)))")
 
                 // Filter out non-speech content
