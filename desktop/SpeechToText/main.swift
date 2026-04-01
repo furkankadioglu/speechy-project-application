@@ -5575,12 +5575,20 @@ class WhisperTranscriber {
     }
 
     private func resolveWhisperPath() -> String {
-        // Strategy 1: use PATH-based discovery via /usr/bin/which
+        // Strategy 1: bundled whisper-cli inside the .app (Contents/MacOS/whisper-cli)
+        if let bundled = Bundle.main.executableURL?
+            .deletingLastPathComponent()
+            .appendingPathComponent("whisper-cli").path,
+           access(bundled, X_OK) == 0 {
+            log("[Speechy] whisper-cli found in bundle: \(bundled)")
+            return bundled
+        }
+        // Strategy 2: use PATH-based discovery via /usr/bin/which
         if let found = findWhisperViaPATH() {
             log("[Speechy] whisper-cli found via PATH: \(found)")
             return found
         }
-        // Strategy 2: check known absolute paths using POSIX access()
+        // Strategy 3: check known absolute paths using POSIX access()
         let candidates = [
             "/opt/homebrew/opt/whisper-cpp/bin/whisper-cli", // Apple Silicon Homebrew
             "/usr/local/opt/whisper-cpp/bin/whisper-cli",    // Intel Homebrew
