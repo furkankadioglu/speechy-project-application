@@ -5433,22 +5433,25 @@ class AudioRecorder {
         engine?.stop()
         engine = nil
 
-        let nativeURL = self.nativeURL
-        let finalURL = self.finalURL
+        // Capture and clear instance state immediately — prevents double-completion if
+        // stopRecording is called twice (second call sees nil URLs and calls completion(nil))
+        let capturedNativeFile = self.nativeFile
+        let capturedNativeURL = self.nativeURL
+        let capturedFinalURL = self.finalURL
+        self.nativeFile = nil
+        self.nativeURL = nil
+        self.finalURL = nil
 
-        guard let nativeURL = nativeURL, let finalURL = finalURL else {
-            self.nativeFile = nil
+        guard let nativeURL = capturedNativeURL, let finalURL = capturedFinalURL else {
             completion(nil)
             return
         }
 
-        // Wait for pending writes to finish, then convert offline.
-        // nativeFile must be cleared inside writeQueue so that any already-queued
-        // write(from:) calls (which access self?.nativeFile) complete before we
-        // release the file — otherwise the last audio buffer(s) get dropped.
-        writeQueue.async {
-            self.nativeFile = nil
-
+        // Wait for any in-flight audio buffer writes, then convert offline.
+        // capturedNativeFile goes out of scope after writeQueue task completes,
+        // which flushes and closes the file — safe for any already-queued write(from:) calls.
+        writeQueue.async { [capturedNativeFile] in
+            _ = capturedNativeFile // hold reference until queued writes drain
             self.convertToWhisperFormat(sourceURL: nativeURL, destinationURL: finalURL)
             try? FileManager.default.removeItem(at: nativeURL)
             completion(finalURL)
@@ -5581,6 +5584,10 @@ class LocalTTSPlayer {
 
 // MARK: - Whisper Transcriber
 class WhisperTranscriber {
+    // Serial queue ensures only one whisper process runs at a time — prevents CPU overload
+    // from multiple concurrent transcriptions when the user records repeatedly.
+    private let transcriptionQueue = DispatchQueue(label: "com.speechy.transcription", qos: .userInitiated)
+
     // Cached at first use — subprocess discovery is expensive (spawns /usr/bin/which)
     private var _whisperPathCache: String?
     private var whisperPath: String {
@@ -5765,7 +5772,7 @@ class WhisperTranscriber {
         // Capture current model at transcription time
         let modelToUse = currentModel
 
-        DispatchQueue.global(qos: .userInitiated).async {
+        transcriptionQueue.async {
             let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int) ?? 0
             log("[Speechy] Whisper - lang: \(language), model: \(modelToUse.rawValue), audio size: \(fileSize) bytes")
 
@@ -5803,14 +5810,24 @@ class WhisperTranscriber {
             process.standardError = errPipe
 
             do {
+                // Read stderr concurrently to prevent pipe-buffer deadlock.
+                // If whisper writes >64KB to stderr while we block in waitUntilExit(),
+                // the subprocess stalls waiting for the buffer to drain — deadlock.
+                var errText = ""
+                let stderrSemaphore = DispatchSemaphore(value: 0)
+                DispatchQueue.global(qos: .background).async {
+                    let d = errPipe.fileHandleForReading.readDataToEndOfFile()
+                    errText = (String(data: d, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    stderrSemaphore.signal()
+                }
+
                 try process.run()
                 process.waitUntilExit()
 
                 let exitCode = process.terminationStatus
                 let data = outPipe.fileHandleForReading.readDataToEndOfFile()
-                let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+                _ = stderrSemaphore.wait(timeout: .now() + 5.0) // wait up to 5s for stderr
                 let rawText = (String(data: data, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                let errText = (String(data: errData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 
                 log("[Speechy] Whisper exit: \(exitCode)")
                 if !errText.isEmpty {
