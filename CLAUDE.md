@@ -13,13 +13,10 @@
 - When multiple edits are independent, make them all in parallel
 
 ## Build Commands
-- Desktop (universal binary — Intel + Apple Silicon):
+- Desktop (Apple Silicon only — arm64):
   ```
   cd desktop/SpeechToText
-  swiftc main.swift -target arm64-apple-macosx12.0 -o SpeechyApp-arm64 -framework Cocoa -framework AVFoundation -framework Carbon -framework CoreAudio
-  swiftc main.swift -target x86_64-apple-macosx12.0 -o SpeechyApp-x86 -framework Cocoa -framework AVFoundation -framework Carbon -framework CoreAudio
-  lipo -create SpeechyApp-arm64 SpeechyApp-x86 -output SpeechyApp
-  rm SpeechyApp-arm64 SpeechyApp-x86
+  swiftc main.swift -target arm64-apple-macosx12.0 -o SpeechyApp -framework Cocoa -framework AVFoundation -framework Carbon -framework CoreAudio
   ```
 - Mobile: `cd mobile && xcodebuild build -scheme Speechy -destination 'platform=iOS Simulator,name=iPhone 16 Pro'`
 - Mobile tests: `cd mobile && xcodebuild test -scheme Speechy -destination 'platform=iOS Simulator,name=iPhone 16 Pro'`
