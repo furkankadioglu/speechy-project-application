@@ -277,14 +277,19 @@ enum ModalConfigType: String, Codable, CaseIterable {
     }
 
     var promptHint: String {
+        // Only prompts that genuinely help whisper understand context.
+        // Style hints (lowercase, no-punct, no-capitalize) do NOT work reliably via prompt —
+        // whisper treats them as speech context, not instructions. They are applied in Swift
+        // post-processing instead. Bracket notation like [Meeting Notes] confuses the decoder
+        // and causes ALL-CAPS output — never use brackets in prompts.
         switch self {
         case .default:       return ""
-        case .noPunctuation: return "no punctuation"
-        case .noCapitalize:  return "no capitalization"
-        case .allLowercase:  return "all lowercase"
-        case .formal:        return "formal corporate professional language"
-        case .paragraphs:    return "new paragraph for each topic"
-        case .meetingNotes:  return "[Meeting Notes]"
+        case .noPunctuation: return ""  // applied in post-processing
+        case .noCapitalize:  return ""  // applied in post-processing
+        case .allLowercase:  return ""  // applied in post-processing
+        case .formal:        return "formal corporate language"
+        case .paragraphs:    return ""  // applied via applyParagraphBreaks
+        case .meetingNotes:  return "meeting notes"  // no brackets — they corrupt output
         }
     }
 
@@ -5778,8 +5783,11 @@ class WhisperTranscriber {
                 "-l", language,
                 "-nt",          // no timestamps
                 "-np",          // no progress
-                "-nth", "0.9",  // no-speech threshold
-                "-et", "3.0",   // entropy threshold
+                "-nfa",         // disable flash attention — new binary enables it by default,
+                                // causes unpredictable ALL-CAPS and repetition hallucinations
+                "-sns",         // suppress non-speech tokens ([Music], [Applause] etc.)
+                "-nth", "0.60", // no-speech threshold — whisper default (was 0.9, too permissive)
+                "-et", "2.40",  // entropy threshold — whisper default (was 3.0, caused hallucinations)
             ]
             if let prompt = SettingsManager.shared.whisperPrompt {
                 args += ["--prompt", prompt]
@@ -5823,7 +5831,11 @@ class WhisperTranscriber {
                 let filteredText = self.filterNonSpeech(rawText)
 
                 if let text = filteredText {
-                    let finalText = SettingsManager.shared.modalConfig == .paragraphs ? self.applyParagraphBreaks(text) : text
+                    let config = SettingsManager.shared.modalConfig
+                    var finalText = config == .paragraphs ? self.applyParagraphBreaks(text) : text
+                    // Apply style transformations in Swift — whisper prompts cannot reliably
+                    // control output style and often produce the opposite of what's intended.
+                    finalText = self.applyStyleConfig(finalText, config: config)
                     log("[Speechy] Filtered result: \(finalText.prefix(80))")
                     completion(finalText)
                 } else {
@@ -5876,6 +5888,36 @@ class WhisperTranscriber {
             idx += groupSize
         }
         return paragraphs.joined(separator: "\n\n")
+    }
+
+    /// Apply text style transformations that cannot be reliably controlled via whisper --prompt.
+    /// Prompts are for vocabulary/context hints only — not style instructions.
+    private func applyStyleConfig(_ text: String, config: ModalConfigType) -> String {
+        switch config {
+        case .allLowercase:
+            return text.lowercased()
+        case .noCapitalize:
+            // Lower-case the first character of each sentence that whisper auto-capitalized.
+            // We do a simple scan: after . ! ? or at the start, lower the next alpha char.
+            var chars = Array(text)
+            var afterBoundary = true
+            for i in 0..<chars.count {
+                let c = chars[i]
+                if afterBoundary && c.isLetter {
+                    chars[i] = Character(c.lowercased())
+                    afterBoundary = false
+                } else if c == "." || c == "!" || c == "?" {
+                    afterBoundary = true
+                } else if !c.isWhitespace {
+                    afterBoundary = false
+                }
+            }
+            return String(chars)
+        case .noPunctuation:
+            return text.filter { !$0.isPunctuation || $0.isWhitespace }
+        default:
+            return text
+        }
     }
 }
 
