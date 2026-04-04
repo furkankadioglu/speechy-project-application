@@ -1935,6 +1935,7 @@ class SettingsManager: ObservableObject {
     @Published var modalConfig: ModalConfigType
     @Published var appLanguage: String
     @Published var showInDock: Bool
+    @Published var autoPasteText: Bool
 
     /// When true, hotkey triggers are suppressed (user is recording a new shortcut in settings)
     var isCapturingShortcut = false
@@ -2064,6 +2065,9 @@ class SettingsManager: ObservableObject {
         // Dock visibility: default true
         _showInDock = Published(initialValue: defaults.object(forKey: "showInDock") as? Bool ?? true)
 
+        // Auto-paste: default OFF — user must opt-in to auto-paste transcribed text
+        _autoPasteText = Published(initialValue: defaults.bool(forKey: "autoPasteText"))
+
         // Auto-save and notify on changes
         $slots.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
@@ -2093,6 +2097,8 @@ class SettingsManager: ObservableObject {
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
         $appLanguage.dropFirst()
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
+        $autoPasteText.dropFirst()
+            .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
         $showInDock.dropFirst()
             .sink { show in
                 DispatchQueue.main.async {
@@ -2120,6 +2126,7 @@ class SettingsManager: ObservableObject {
         _savedWords = Published(initialValue: [])
         _modalConfig = Published(initialValue: .default)
         _appLanguage = Published(initialValue: "en")
+        _autoPasteText = Published(initialValue: false)
     }
     #endif
 
@@ -2158,6 +2165,7 @@ class SettingsManager: ObservableObject {
         defaults.set(modalConfig.rawValue, forKey: "modalConfig")
         defaults.set(appLanguage, forKey: "appLanguage")
         defaults.set(showInDock, forKey: "showInDock")
+        defaults.set(autoPasteText, forKey: "autoPasteText")
     }
 
     /// Builds the whisper --prompt string from saved words + modal config hint.
@@ -3008,6 +3016,31 @@ struct AdvancedTab: View {
 
                             Toggle("", isOn: $settings.saveAudioRecordings)
                                 .toggleStyle(SwitchToggleStyle(tint: .cyan))
+                                .labelsHidden()
+                        }
+                        .padding()
+
+                        Divider()
+                            .padding(.horizontal)
+
+                        HStack(alignment: .top, spacing: 14) {
+                            Image(systemName: "doc.on.clipboard.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(.orange)
+                                .frame(width: 28)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Auto-Paste Transcription")
+                                    .font(.subheadline.weight(.medium))
+                                Text("Automatically paste transcribed text into the active app using Cmd+V")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+
+                            Toggle("", isOn: $settings.autoPasteText)
+                                .toggleStyle(SwitchToggleStyle(tint: .orange))
                                 .labelsHidden()
                         }
                         .padding()
@@ -4969,7 +5002,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self.overlayWindow.setState(.hidden)
                     if let text = result, !text.isEmpty {
                         SettingsManager.shared.addToHistory(text, language: self.activeLanguage, audioPath: savedAudioURL?.path)
-                        self.pasteText(text)
+                        if SettingsManager.shared.autoPasteText {
+                            self.pasteText(text)
+                        }
                         // Read transcription aloud if TTS is enabled (accessibility)
                         LocalTTSPlayer.shared.speak(text: text, language: self.activeLanguage)
                     } else if let url = savedAudioURL {
