@@ -3030,9 +3030,9 @@ struct AdvancedTab: View {
                                 .frame(width: 28)
 
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Auto-Paste Transcription")
+                                Text("Copy to Clipboard")
                                     .font(.subheadline.weight(.medium))
-                                Text("Automatically paste transcribed text into the active app using Cmd+V")
+                                Text("Keep transcribed text in clipboard so you can paste it again with Cmd+V")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -5002,9 +5002,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self.overlayWindow.setState(.hidden)
                     if let text = result, !text.isEmpty {
                         SettingsManager.shared.addToHistory(text, language: self.activeLanguage, audioPath: savedAudioURL?.path)
-                        if SettingsManager.shared.autoPasteText {
-                            self.pasteText(text)
-                        }
+                        self.pasteText(text)
                         // Read transcription aloud if TTS is enabled (accessibility)
                         LocalTTSPlayer.shared.speak(text: text, language: self.activeLanguage)
                     } else if let url = savedAudioURL {
@@ -5020,6 +5018,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func pasteText(_ text: String) {
+        // Save previous clipboard contents to restore later if needed
+        let previousClipboard = NSPasteboard.general.string(forType: .string)
+
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -5030,6 +5031,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let up = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
             up?.flags = .maskCommand
             up?.post(tap: .cghidEventTap)
+
+            // If "Copy to Clipboard" is off, restore previous clipboard after paste
+            if !SettingsManager.shared.autoPasteText {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    NSPasteboard.general.clearContents()
+                    if let prev = previousClipboard {
+                        NSPasteboard.general.setString(prev, forType: .string)
+                    }
+                }
+            }
         }
     }
 
