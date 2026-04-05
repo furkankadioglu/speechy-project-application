@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 licensing/config.php
 .claude/settings.json
+.build-count

@@ -15,8 +15,8 @@
 ## Build Commands
 - Desktop (Apple Silicon only — arm64):
   ```
-  cd desktop/SpeechToText
-  swiftc main.swift -target arm64-apple-macosx12.0 -o SpeechyApp -framework Cocoa -framework AVFoundation -framework Carbon -framework CoreAudio
+  cd desktop/SpeechToText && ./build.sh          # build only
+  cd desktop/SpeechToText && ./build.sh --install # build + replace + codesign
   ```
 - Mobile: `cd mobile && xcodebuild build -scheme Speechy -destination 'platform=iOS Simulator,name=iPhone 16 Pro'`
 - Mobile tests: `cd mobile && xcodebuild test -scheme Speechy -destination 'platform=iOS Simulator,name=iPhone 16 Pro'`
