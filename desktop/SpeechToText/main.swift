@@ -6,7 +6,7 @@ import Carbon.HIToolbox
 import Combine
 import ServiceManagement
 
-let APP_BUILD = "2026.04.08 #1 00:30"
+let APP_BUILD = "2026.04.08 #3 01:48"
 
 // MARK: - Logger
 
@@ -1629,7 +1629,15 @@ class ModelDownloadManager: NSObject, ObservableObject, URLSessionDownloadDelega
 
     func modelExists(_ model: ModelType) -> Bool {
         let path = Self.modelsDirectory.appendingPathComponent(model.fileName)
-        return FileManager.default.fileExists(atPath: path.path)
+        guard FileManager.default.fileExists(atPath: path.path) else { return false }
+        // Model files are >100MB — reject 0-byte or corrupt/partial downloads
+        let attrs = try? FileManager.default.attributesOfItem(atPath: path.path)
+        let size = attrs?[.size] as? UInt64 ?? 0
+        if size < 1_000_000 {
+            log("[Speechy] WARNING: Model file too small (\(size) bytes), likely corrupt: \(path.lastPathComponent)")
+            return false
+        }
+        return true
     }
 
     func modelPath(_ model: ModelType) -> String {
@@ -5366,6 +5374,7 @@ class AudioRecorder {
     private var nativeFile: AVAudioFile?
     private var nativeURL: URL?
     private var finalURL: URL?
+    private var recordingStartTime: Date?
     private let writeQueue = DispatchQueue(label: "com.speechy.audiowrite")
     var onAudioLevel: ((Float) -> Void)?
 
@@ -5380,10 +5389,18 @@ class AudioRecorder {
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
+        // Validate input format — some devices return invalid/zero formats
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            log("[Speechy] ERROR: Invalid input format — sampleRate: \(inputFormat.sampleRate), channels: \(inputFormat.channelCount)")
+            return
+        }
+        log("[Speechy] Input format: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch, \(inputFormat.commonFormat.rawValue == 1 ? "float32" : "format(\(inputFormat.commonFormat.rawValue))")")
+
         // Record in native format first, convert to whisper format after stopping
         let nativeURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "_native.caf")
         self.nativeURL = nativeURL
         self.finalURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".wav")
+        self.recordingStartTime = Date()
 
         do {
             nativeFile = try AVAudioFile(forWriting: nativeURL, settings: inputFormat.settings)
@@ -5400,7 +5417,10 @@ class AudioRecorder {
             let channelCount = Int(buffer.format.channelCount)
 
             // Copy buffer data (buffer is only valid during this callback)
-            let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameLength)!
+            guard let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameLength) else {
+                log("[Speechy] WARNING: Failed to allocate audio buffer copy")
+                return
+            }
             copy.frameLength = buffer.frameLength
             for ch in 0..<channelCount {
                 memcpy(copy.floatChannelData![ch], channelData[ch], frameLength * MemoryLayout<Float>.size)
@@ -5468,6 +5488,16 @@ class AudioRecorder {
         engine?.stop()
         engine = nil
 
+        // Log recording duration
+        let duration: Double
+        if let start = recordingStartTime {
+            duration = Date().timeIntervalSince(start)
+            log("[Speechy] Recording stopped — duration: \(String(format: "%.2f", duration))s")
+        } else {
+            duration = 0
+            log("[Speechy] Recording stopped — no start time (recording may not have started)")
+        }
+
         // Capture and clear instance state immediately — prevents double-completion if
         // stopRecording is called twice (second call sees nil URLs and calls completion(nil))
         let capturedNativeFile = self.nativeFile
@@ -5476,10 +5506,16 @@ class AudioRecorder {
         self.nativeFile = nil
         self.nativeURL = nil
         self.finalURL = nil
+        self.recordingStartTime = nil
 
         guard let nativeURL = capturedNativeURL, let finalURL = capturedFinalURL else {
+            log("[Speechy] WARNING: No audio URLs captured — recording never started or already stopped")
             completion(nil)
             return
+        }
+
+        if duration < 0.3 {
+            log("[Speechy] WARNING: Very short recording (\(String(format: "%.2f", duration))s) — may produce empty transcription")
         }
 
         // Wait for any in-flight audio buffer writes, then convert offline.
@@ -5487,6 +5523,16 @@ class AudioRecorder {
         // which flushes and closes the file — safe for any already-queued write(from:) calls.
         writeQueue.async { [capturedNativeFile] in
             _ = capturedNativeFile // hold reference until queued writes drain
+
+            // Log native file size before conversion
+            let nativeSize = (try? FileManager.default.attributesOfItem(atPath: nativeURL.path)[.size] as? UInt64) ?? 0
+            log("[Speechy] Native audio file: \(nativeSize) bytes (\(nativeURL.lastPathComponent))")
+            if nativeSize == 0 {
+                log("[Speechy] ERROR: Native audio file is 0 bytes — no audio was written during recording")
+                try? FileManager.default.removeItem(at: nativeURL)
+                completion(nil)
+                return
+            }
 
             var success = self.convertToWhisperFormat(sourceURL: nativeURL, destinationURL: finalURL)
 
@@ -5548,11 +5594,17 @@ class AudioRecorder {
             while sourceFile.framePosition < sourceFile.length {
                 let remainingFrames = AVAudioFrameCount(sourceFile.length - sourceFile.framePosition)
                 let framesToRead = min(bufferSize, remainingFrames)
-                guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: framesToRead) else { break }
+                guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: framesToRead) else {
+                    log("[Speechy] ERROR: Failed to allocate input buffer (capacity: \(framesToRead) frames)")
+                    break
+                }
                 try sourceFile.read(into: inputBuffer)
 
                 let outputFrames = max(AVAudioFrameCount(Double(inputBuffer.frameLength) * ratio) + 1, 1)
-                guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: outputFrames) else { break }
+                guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: outputFrames) else {
+                    log("[Speechy] ERROR: Failed to allocate output buffer (capacity: \(outputFrames) frames)")
+                    break
+                }
 
                 var error: NSError?
                 var inputConsumed = false
@@ -5868,13 +5920,30 @@ class WhisperTranscriber {
         let modelToUse = currentModel
 
         transcriptionQueue.async {
-            let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int) ?? 0
-            log("[Speechy] Whisper - lang: \(language), model: \(modelToUse.rawValue), audio size: \(fileSize) bytes")
+            // ── Step 1: Validate audio file ──
+            guard FileManager.default.fileExists(atPath: audioURL.path) else {
+                log("[Speechy] ERROR: Audio file does not exist at \(audioURL.path)")
+                completion(nil)
+                return
+            }
+            let audioFileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? UInt64) ?? 0
+            log("[Speechy] ── Transcription start ──")
+            log("[Speechy]   Language: \(language)")
+            log("[Speechy]   Model: \(modelToUse.rawValue) (\(modelToUse.displayName))")
+            log("[Speechy]   Audio: \(audioURL.lastPathComponent) (\(audioFileSize) bytes)")
 
+            if audioFileSize < 100 {
+                log("[Speechy] ERROR: Audio file too small (\(audioFileSize) bytes) — recording may have failed")
+                completion(nil)
+                return
+            }
+
+            // ── Step 2: Validate model ──
             let modelPath = ModelDownloadManager.shared.modelPath(modelToUse)
 
             guard ModelDownloadManager.shared.modelExists(modelToUse) else {
-                log("[Speechy] ERROR: Model not found at \(modelPath)")
+                let actualSize = (try? FileManager.default.attributesOfItem(atPath: modelPath)[.size] as? UInt64) ?? 0
+                log("[Speechy] ERROR: Model invalid at \(modelPath) (exists: \(FileManager.default.fileExists(atPath: modelPath)), size: \(actualSize) bytes)")
                 DispatchQueue.main.async {
                     self.showModelNotFoundNotification(model: modelToUse)
                 }
@@ -5882,14 +5951,22 @@ class WhisperTranscriber {
                 return
             }
 
-            // Log audio file size for debugging
-            if let audioAttrs = try? FileManager.default.attributesOfItem(atPath: audioURL.path),
-               let audioSize = audioAttrs[.size] as? UInt64 {
-                log("[Speechy] Audio file for whisper: \(audioSize) bytes (\(audioURL.lastPathComponent))")
-            }
+            let modelSize = (try? FileManager.default.attributesOfItem(atPath: modelPath)[.size] as? UInt64) ?? 0
+            log("[Speechy]   Model file: \(modelPath.components(separatedBy: "/").last ?? modelPath) (\(modelSize / 1_000_000) MB)")
 
+            // ── Step 3: Validate whisper binary ──
+            let whisperBin = self.whisperPath
+            guard FileManager.default.isExecutableFile(atPath: whisperBin) else {
+                log("[Speechy] ERROR: whisper-cli not executable at \(whisperBin)")
+                DispatchQueue.main.async { self.showWhisperNotInstalledAlert() }
+                completion(nil)
+                return
+            }
+            log("[Speechy]   Whisper: \(whisperBin)")
+
+            // ── Step 4: Build arguments ──
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: self.whisperPath)
+            process.executableURL = URL(fileURLWithPath: whisperBin)
             var args = [
                 "-m", modelPath,
                 "-l", language,
@@ -5903,12 +5980,10 @@ class WhisperTranscriber {
             ]
             if let prompt = SettingsManager.shared.whisperPrompt {
                 args += ["--prompt", prompt]
-                log("[Speechy] Whisper prompt: \"\(prompt)\"")
+                log("[Speechy]   Prompt: \"\(prompt)\"")
             }
             args.append(audioURL.path)
             process.arguments = args
-
-            log("[Speechy] Whisper cmd: \(self.whisperPath) -m \(modelPath.components(separatedBy: "/").last ?? modelPath) -l \(language) [audio: \(audioURL.lastPathComponent)]")
 
             let outPipe = Pipe()
             let errPipe = Pipe()
@@ -5923,30 +5998,78 @@ class WhisperTranscriber {
             process.environment = env
 
             do {
-                // Read stderr concurrently to prevent pipe-buffer deadlock.
-                // If whisper writes >64KB to stderr while we block in waitUntilExit(),
+                // Read both stdout and stderr concurrently to prevent pipe-buffer deadlock.
+                // If whisper writes >64KB to either pipe while we block in waitUntilExit(),
                 // the subprocess stalls waiting for the buffer to drain — deadlock.
                 var errText = ""
+                var outData = Data()
                 let stderrSemaphore = DispatchSemaphore(value: 0)
-                DispatchQueue.global(qos: .background).async {
+                let stdoutSemaphore = DispatchSemaphore(value: 0)
+
+                DispatchQueue.global(qos: .userInitiated).async {
+                    outData = outPipe.fileHandleForReading.readDataToEndOfFile()
+                    stdoutSemaphore.signal()
+                }
+                DispatchQueue.global(qos: .userInitiated).async {
                     let d = errPipe.fileHandleForReading.readDataToEndOfFile()
                     errText = (String(data: d, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                     stderrSemaphore.signal()
                 }
 
+                let startTime = Date()
                 try process.run()
-                process.waitUntilExit()
 
-                let exitCode = process.terminationStatus
-                let data = outPipe.fileHandleForReading.readDataToEndOfFile()
-                _ = stderrSemaphore.wait(timeout: .now() + 5.0) // wait up to 5s for stderr
-                let rawText = (String(data: data, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-
-                log("[Speechy] Whisper exit: \(exitCode)")
-                if !errText.isEmpty {
-                    log("[Speechy] Whisper stderr: \(errText.prefix(500))")
+                // Timeout: 120 seconds max for whisper process
+                let timeoutSeconds = 120.0
+                let timeoutWorkItem = DispatchWorkItem { [weak process] in
+                    if let p = process, p.isRunning {
+                        log("[Speechy] ERROR: Whisper process timed out after \(timeoutSeconds)s — terminating")
+                        p.terminate()
+                    }
                 }
-                log("[Speechy] Raw result: \(rawText.isEmpty ? "(empty)" : String(rawText.prefix(80)))")
+                DispatchQueue.global().asyncAfter(deadline: .now() + timeoutSeconds, execute: timeoutWorkItem)
+
+                process.waitUntilExit()
+                timeoutWorkItem.cancel()
+
+                let elapsed = Date().timeIntervalSince(startTime)
+                let exitCode = process.terminationStatus
+                _ = stdoutSemaphore.wait(timeout: .now() + 5.0)
+                _ = stderrSemaphore.wait(timeout: .now() + 5.0)
+                let rawText = (String(data: outData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+                // ── Step 5: Log results ──
+                log("[Speechy] ── Whisper finished ──")
+                log("[Speechy]   Exit code: \(exitCode) (took \(String(format: "%.1f", elapsed))s)")
+                log("[Speechy]   Stdout: \(outData.count) bytes")
+                log("[Speechy]   Raw text: \(rawText.isEmpty ? "(empty)" : String(rawText.prefix(200)))")
+                if !errText.isEmpty {
+                    // Log full stderr in chunks for complete diagnosis
+                    let lines = errText.components(separatedBy: "\n")
+                    for (i, line) in lines.prefix(20).enumerated() {
+                        log("[Speechy]   Stderr[\(i)]: \(line.prefix(200))")
+                    }
+                    if lines.count > 20 {
+                        log("[Speechy]   Stderr: ... (\(lines.count - 20) more lines)")
+                    }
+                }
+
+                // Non-zero exit code = whisper failed
+                if exitCode != 0 {
+                    log("[Speechy] ERROR: Whisper exited with code \(exitCode)")
+                    if exitCode == -1 || exitCode == 15 {
+                        log("[Speechy]   (process was terminated/timed out)")
+                    } else if exitCode == -9 || exitCode == 9 {
+                        log("[Speechy]   (process was killed — possibly OOM)")
+                    }
+                }
+
+                // ── Step 6: Process result ──
+                if rawText.isEmpty && exitCode != 0 {
+                    log("[Speechy] Whisper failed with no output — check stderr above")
+                    completion(nil)
+                    return
+                }
 
                 // Filter out non-speech content
                 let filteredText = self.filterNonSpeech(rawText)
@@ -5957,17 +6080,23 @@ class WhisperTranscriber {
                     // Apply style transformations in Swift — whisper prompts cannot reliably
                     // control output style and often produce the opposite of what's intended.
                     finalText = self.applyStyleConfig(finalText, config: config)
-                    log("[Speechy] Filtered result: \(finalText.prefix(80))")
+                    log("[Speechy] ✓ Final result: \(finalText.prefix(200))")
                     completion(finalText)
                 } else {
-                    log("[Speechy] Result filtered out (non-speech)")
+                    log("[Speechy] ✗ Result filtered out (non-speech) — raw was: \"\(rawText.prefix(100))\"")
                     completion(nil)
                 }
             } catch {
-                log("[Speechy] Whisper error: \(error)")
+                log("[Speechy] ERROR: Failed to launch whisper: \(error)")
+                log("[Speechy]   Path: \(whisperBin)")
+                log("[Speechy]   Error domain: \((error as NSError).domain), code: \((error as NSError).code)")
                 let desc = (error as NSError).localizedDescription
                 if desc.contains("doesn't exist") || desc.contains("does not exist") || (error as NSError).code == 4 {
+                    log("[Speechy]   → whisper-cli binary not found at expected path")
                     DispatchQueue.main.async { self.showWhisperNotInstalledAlert() }
+                } else if desc.contains("not permitted") || desc.contains("permission") {
+                    log("[Speechy]   → Permission denied — Gatekeeper/quarantine may be blocking execution")
+                    log("[Speechy]   → Fix: Run 'xattr -cr /Applications/Speechy.app' in Terminal")
                 }
                 completion(nil)
             }
