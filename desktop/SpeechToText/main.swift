@@ -6,7 +6,7 @@ import Carbon.HIToolbox
 import Combine
 import ServiceManagement
 
-let APP_BUILD = "2026.04.07 #1 19:01"
+let APP_BUILD = "2026.04.08 #1 00:30"
 
 // MARK: - Logger
 
@@ -5487,24 +5487,48 @@ class AudioRecorder {
         // which flushes and closes the file — safe for any already-queued write(from:) calls.
         writeQueue.async { [capturedNativeFile] in
             _ = capturedNativeFile // hold reference until queued writes drain
-            self.convertToWhisperFormat(sourceURL: nativeURL, destinationURL: finalURL)
+
+            var success = self.convertToWhisperFormat(sourceURL: nativeURL, destinationURL: finalURL)
+
+            // Fallback: use afconvert if AVAudioConverter failed
+            if !success {
+                log("[Speechy] Trying afconvert fallback...")
+                success = self.convertWithAFConvert(sourceURL: nativeURL, destinationURL: finalURL)
+            }
+
             try? FileManager.default.removeItem(at: nativeURL)
-            completion(finalURL)
+
+            // Verify the output file exists and has audio data
+            if success, let attrs = try? FileManager.default.attributesOfItem(atPath: finalURL.path),
+               let size = attrs[.size] as? UInt64, size > 44 {
+                log("[Speechy] WAV file ready: \(size) bytes")
+                completion(finalURL)
+            } else {
+                log("[Speechy] ERROR: Audio conversion produced no valid WAV file")
+                completion(nil)
+            }
         }
     }
 
-    private func convertToWhisperFormat(sourceURL: URL, destinationURL: URL) {
+    @discardableResult
+    private func convertToWhisperFormat(sourceURL: URL, destinationURL: URL) -> Bool {
         do {
             let sourceFile = try AVAudioFile(forReading: sourceURL)
             let sourceFormat = sourceFile.processingFormat
+            log("[Speechy] Source audio: \(sourceFile.length) frames, \(sourceFormat.sampleRate)Hz, \(sourceFormat.channelCount)ch, \(sourceFormat.commonFormat.rawValue == 1 ? "float32" : "other(\(sourceFormat.commonFormat.rawValue))")")
+
+            guard sourceFile.length > 0 else {
+                log("[Speechy] ERROR: Source audio file is empty (0 frames)")
+                return false
+            }
 
             guard let outputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false) else {
                 log("[Speechy] Failed to create output format")
-                return
+                return false
             }
             guard let converter = AVAudioConverter(from: sourceFormat, to: outputFormat) else {
-                log("[Speechy] Failed to create converter \(sourceFormat) -> \(outputFormat)")
-                return
+                log("[Speechy] Failed to create AVAudioConverter: \(sourceFormat) -> \(outputFormat)")
+                return false
             }
 
             let outputSettings: [String: Any] = [
@@ -5519,6 +5543,7 @@ class AudioRecorder {
 
             let bufferSize: AVAudioFrameCount = 4096
             let ratio = 16000.0 / sourceFormat.sampleRate
+            var totalFramesWritten: Int64 = 0
 
             while sourceFile.framePosition < sourceFile.length {
                 let remainingFrames = AVAudioFrameCount(sourceFile.length - sourceFile.framePosition)
@@ -5542,18 +5567,53 @@ class AudioRecorder {
                 }
 
                 if let error = error {
-                    log("[Speechy] Conversion error: \(error)")
+                    log("[Speechy] Conversion error at frame \(sourceFile.framePosition): \(error)")
                     break
                 }
 
                 if outputBuffer.frameLength > 0 {
                     try outputFile.write(from: outputBuffer)
+                    totalFramesWritten += Int64(outputBuffer.frameLength)
                 }
             }
 
-            log("[Speechy] Audio converted: \(sourceFile.length) frames @ \(sourceFormat.sampleRate)Hz -> 16kHz WAV")
+            log("[Speechy] Audio converted: \(sourceFile.length) frames @ \(sourceFormat.sampleRate)Hz -> \(totalFramesWritten) frames @ 16kHz WAV")
+            return totalFramesWritten > 0
         } catch {
             log("[Speechy] Format conversion failed: \(error)")
+            return false
+        }
+    }
+
+    /// Fallback: use macOS built-in afconvert when AVAudioConverter fails
+    private func convertWithAFConvert(sourceURL: URL, destinationURL: URL) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/afconvert")
+        process.arguments = [
+            sourceURL.path,
+            destinationURL.path,
+            "-d", "LEI16@16000",  // 16-bit little-endian integer PCM @ 16kHz
+            "-c", "1",            // mono
+            "-f", "WAVE"          // WAV format
+        ]
+        let errPipe = Pipe()
+        process.standardError = errPipe
+        process.standardOutput = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+            let errStr = String(data: errData, encoding: .utf8) ?? ""
+            if process.terminationStatus == 0 {
+                log("[Speechy] afconvert fallback succeeded")
+                return true
+            } else {
+                log("[Speechy] afconvert failed (exit \(process.terminationStatus)): \(errStr.prefix(200))")
+                return false
+            }
+        } catch {
+            log("[Speechy] afconvert error: \(error)")
+            return false
         }
     }
 }
@@ -5822,6 +5882,12 @@ class WhisperTranscriber {
                 return
             }
 
+            // Log audio file size for debugging
+            if let audioAttrs = try? FileManager.default.attributesOfItem(atPath: audioURL.path),
+               let audioSize = audioAttrs[.size] as? UInt64 {
+                log("[Speechy] Audio file for whisper: \(audioSize) bytes (\(audioURL.lastPathComponent))")
+            }
+
             let process = Process()
             process.executableURL = URL(fileURLWithPath: self.whisperPath)
             var args = [
@@ -5842,10 +5908,19 @@ class WhisperTranscriber {
             args.append(audioURL.path)
             process.arguments = args
 
+            log("[Speechy] Whisper cmd: \(self.whisperPath) -m \(modelPath.components(separatedBy: "/").last ?? modelPath) -l \(language) [audio: \(audioURL.lastPathComponent)]")
+
             let outPipe = Pipe()
             let errPipe = Pipe()
             process.standardOutput = outPipe
             process.standardError = errPipe
+
+            // Set environment to help Metal find resources
+            var env = ProcessInfo.processInfo.environment
+            if let bundleResources = Bundle.main.resourcePath {
+                env["GGML_METAL_PATH_RESOURCES"] = bundleResources
+            }
+            process.environment = env
 
             do {
                 // Read stderr concurrently to prevent pipe-buffer deadlock.
@@ -5869,7 +5944,7 @@ class WhisperTranscriber {
 
                 log("[Speechy] Whisper exit: \(exitCode)")
                 if !errText.isEmpty {
-                    log("[Speechy] Whisper stderr: \(errText.prefix(300))")
+                    log("[Speechy] Whisper stderr: \(errText.prefix(500))")
                 }
                 log("[Speechy] Raw result: \(rawText.isEmpty ? "(empty)" : String(rawText.prefix(80)))")
 
