@@ -6,7 +6,7 @@ import Carbon.HIToolbox
 import Combine
 import ServiceManagement
 
-let APP_BUILD = "2026.04.09 #2 01:36"
+let APP_BUILD = "2026.04.09 #3 01:41"
 
 // MARK: - Logger
 
@@ -5760,9 +5760,6 @@ class LiveWhisperTranscriber {
     private let modelPath: String
     private let threadCount: Int
 
-    // Only process last N seconds of audio for constant-time preview
-    private let maxPreviewSeconds: Double = 10.0
-
     var onPartialResult: ((String) -> Void)?
 
     init() {
@@ -5807,21 +5804,6 @@ class LiveWhisperTranscriber {
         bufferLock.unlock()
     }
 
-    /// Extract only the last N seconds of buffers for faster processing
-    private func extractRecentBuffers(from allBuffers: [AVAudioPCMBuffer], format: AVAudioFormat) -> [AVAudioPCMBuffer] {
-        let maxFrames = Int64(format.sampleRate * maxPreviewSeconds)
-        var totalFrames: Int64 = 0
-        var result: [AVAudioPCMBuffer] = []
-
-        // Walk backwards, collecting buffers until we have enough
-        for buf in allBuffers.reversed() {
-            result.insert(buf, at: 0)
-            totalFrames += Int64(buf.frameLength)
-            if totalFrames >= maxFrames { break }
-        }
-        return result
-    }
-
     private func processAccumulatedAudio() {
         guard !isProcessing, !isStopped else { return }
 
@@ -5848,13 +5830,10 @@ class LiveWhisperTranscriber {
                 try? FileManager.default.removeItem(at: wavURL)
             }
 
-            // Use only last N seconds for constant-time processing
-            let recentBuffers = self.extractRecentBuffers(from: allBuffers, format: format)
-
-            // Write buffers to temp native file
+            // Write all accumulated buffers to temp native file
             do {
                 let file = try AVAudioFile(forWriting: nativeURL, settings: format.settings)
-                for buf in recentBuffers {
+                for buf in allBuffers {
                     try file.write(from: buf)
                 }
             } catch {
@@ -6031,7 +6010,8 @@ class LiveWhisperTranscriber {
 // MARK: - Live Text Overlay Window
 
 class LiveTextWindow: NSWindow {
-    private let textLabel: NSTextField
+    private let textView: NSTextView
+    private let scrollView: NSScrollView
     private let container: NSView
 
     // Typewriter animation state
@@ -6044,27 +6024,37 @@ class LiveTextWindow: NSWindow {
 
     init() {
         let screenFrame = NSScreen.main?.visibleFrame ?? .zero
-        let windowSize = NSSize(width: 500, height: 90)
+        let windowSize = NSSize(width: 500, height: 140)
         let windowOrigin = NSPoint(x: screenFrame.midX - windowSize.width / 2, y: screenFrame.minY + 240)
 
-        container = NSView(frame: NSRect(x: 0, y: 0, width: Int(windowSize.width), height: Int(windowSize.height)))
+        container = NSView(frame: NSRect(origin: .zero, size: windowSize))
         container.wantsLayer = true
         container.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.85).cgColor
         container.layer?.cornerRadius = 16
 
-        textLabel = NSTextField(wrappingLabelWithString: "")
-        textLabel.textColor = .white.withAlphaComponent(0.95)
-        textLabel.font = .systemFont(ofSize: 15, weight: .medium)
-        textLabel.alignment = .center
-        textLabel.backgroundColor = .clear
-        textLabel.isBezeled = false
-        textLabel.isEditable = false
-        textLabel.isSelectable = false
-        textLabel.maximumNumberOfLines = 3
-        textLabel.cell?.truncatesLastVisibleLine = true
-        textLabel.frame = NSRect(x: 16, y: 12, width: Int(windowSize.width) - 32, height: Int(windowSize.height) - 24)
+        let inset: CGFloat = 16
+        let scrollFrame = NSRect(x: inset, y: 10, width: windowSize.width - inset * 2, height: windowSize.height - 20)
+        scrollView = NSScrollView(frame: scrollFrame)
+        scrollView.hasVerticalScroller = false
+        scrollView.hasHorizontalScroller = false
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
 
-        container.addSubview(textLabel)
+        textView = NSTextView(frame: NSRect(origin: .zero, size: scrollFrame.size))
+        textView.isEditable = false
+        textView.isSelectable = false
+        textView.drawsBackground = false
+        textView.textColor = .white.withAlphaComponent(0.95)
+        textView.font = .systemFont(ofSize: 15, weight: .medium)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(width: scrollFrame.width, height: .greatestFiniteMagnitude)
+        textView.autoresizingMask = [.width]
+        textView.textContainerInset = NSSize(width: 0, height: 2)
+
+        scrollView.documentView = textView
+        container.addSubview(scrollView)
 
         super.init(contentRect: NSRect(origin: windowOrigin, size: windowSize),
                    styleMask: .borderless, backing: .buffered, defer: false)
@@ -6107,7 +6097,6 @@ class LiveTextWindow: NSWindow {
     }
 
     private func startTypewriter() {
-        // If already typing, the running timer will pick up the new targetText automatically
         guard typewriterTimer == nil else { return }
 
         isTyping = true
@@ -6121,12 +6110,10 @@ class LiveTextWindow: NSWindow {
                 self.displayedText.append(self.targetText[idx])
                 self.renderText()
             } else {
-                // All characters revealed
                 timer.invalidate()
                 self.typewriterTimer = nil
                 self.isTyping = false
                 self.renderText()
-                // Stop cursor blink after a short delay
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                     guard let self = self, !self.isTyping else { return }
                     self.stopCursorBlink()
@@ -6137,11 +6124,10 @@ class LiveTextWindow: NSWindow {
     }
 
     private func renderText() {
-        if isTyping || cursorVisible {
-            textLabel.stringValue = displayedText + (cursorVisible ? "▌" : " ")
-        } else {
-            textLabel.stringValue = displayedText
-        }
+        let cursor = (isTyping || cursorVisible) && cursorVisible ? "▌" : ""
+        textView.string = displayedText + cursor
+        // Auto-scroll to bottom so newest text is always visible
+        textView.scrollToEndOfDocument(nil)
     }
 
     private func startCursorBlink() {
@@ -6150,7 +6136,6 @@ class LiveTextWindow: NSWindow {
         cursorTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             self.cursorVisible.toggle()
-            // Only re-render cursor blink when NOT actively typing (typing renders on its own)
             if !self.isTyping {
                 self.renderText()
             }
@@ -6168,10 +6153,9 @@ class LiveTextWindow: NSWindow {
             self.displayedText = ""
             self.targetText = ""
             self.isTyping = false
-            self.textLabel.stringValue = ""
+            self.textView.string = ""
             self.startCursorBlink()
             self.renderText()
-            // Reposition in case screen changed
             let screenFrame = NSScreen.main?.visibleFrame ?? .zero
             let size = self.frame.size
             let origin = NSPoint(x: screenFrame.midX - size.width / 2, y: screenFrame.minY + 240)
@@ -6189,7 +6173,7 @@ class LiveTextWindow: NSWindow {
             self.displayedText = ""
             self.targetText = ""
             self.orderOut(nil)
-            self.textLabel.stringValue = ""
+            self.textView.string = ""
         }
     }
 }
