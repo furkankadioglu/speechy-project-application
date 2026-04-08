@@ -6,7 +6,7 @@ import Carbon.HIToolbox
 import Combine
 import ServiceManagement
 
-let APP_BUILD = "2026.04.08 #7 18:33"
+let APP_BUILD = "2026.04.08 #8 18:39"
 
 // MARK: - Logger
 
@@ -5012,7 +5012,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Start live whisper preview if enabled
         if SettingsManager.shared.isLiveTranscription {
-            let lwt = LiveWhisperTranscriber(whisperTranscriber: whisperTranscriber)
+            let lwt = LiveWhisperTranscriber()
             lwt.onPartialResult = { [weak self] text in
                 self?.liveTextWindow?.updateText(text)
             }
@@ -5750,26 +5750,52 @@ class LiveWhisperTranscriber {
     private var inputFormat: AVAudioFormat?
     private let bufferLock = NSLock()
     private var timer: Timer?
+    private var currentProcess: Process?
     private var isProcessing = false
     private var isStopped = false
     private var language: String = "en"
-    private let whisperTranscriber: WhisperTranscriber
+
+    // Resolved once at init — no repeated lookups
+    private let whisperPath: String
+    private let modelPath: String
+    private let threadCount: Int
+
+    // Only process last N seconds of audio for constant-time preview
+    private let maxPreviewSeconds: Double = 10.0
 
     var onPartialResult: ((String) -> Void)?
 
-    init(whisperTranscriber: WhisperTranscriber) {
-        self.whisperTranscriber = whisperTranscriber
+    init() {
+        // Resolve whisper-cli path (same strategy as WhisperTranscriber)
+        if let bundled = Bundle.main.executableURL?
+            .deletingLastPathComponent()
+            .appendingPathComponent("whisper-cli").path,
+           access(bundled, X_OK) == 0 {
+            whisperPath = bundled
+        } else {
+            let candidates = [
+                "/opt/homebrew/opt/whisper-cpp/bin/whisper-cli",
+                "/usr/local/opt/whisper-cpp/bin/whisper-cli",
+                "/opt/homebrew/bin/whisper-cli",
+                "/usr/local/bin/whisper-cli",
+            ]
+            whisperPath = candidates.first { access($0, X_OK) == 0 } ?? candidates[0]
+        }
+
+        modelPath = ModelDownloadManager.shared.modelPath(SettingsManager.shared.selectedModel)
+        threadCount = min(ProcessInfo.processInfo.activeProcessorCount, 8)
+        log("[Speechy] Live Whisper: init — threads=\(threadCount), model=\(modelPath.components(separatedBy: "/").last ?? "?")")
     }
 
     func start(language: String) {
         self.language = language
         self.isStopped = false
         DispatchQueue.main.async {
-            self.timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            self.timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
                 self?.processAccumulatedAudio()
             }
         }
-        log("[Speechy] Live Whisper: Started periodic transcription for '\(language)'")
+        log("[Speechy] Live Whisper: Started for '\(language)'")
     }
 
     func appendBuffer(_ buffer: AVAudioPCMBuffer) {
@@ -5781,14 +5807,29 @@ class LiveWhisperTranscriber {
         bufferLock.unlock()
     }
 
+    /// Extract only the last N seconds of buffers for faster processing
+    private func extractRecentBuffers(from allBuffers: [AVAudioPCMBuffer], format: AVAudioFormat) -> [AVAudioPCMBuffer] {
+        let maxFrames = Int64(format.sampleRate * maxPreviewSeconds)
+        var totalFrames: Int64 = 0
+        var result: [AVAudioPCMBuffer] = []
+
+        // Walk backwards, collecting buffers until we have enough
+        for buf in allBuffers.reversed() {
+            result.insert(buf, at: 0)
+            totalFrames += Int64(buf.frameLength)
+            if totalFrames >= maxFrames { break }
+        }
+        return result
+    }
+
     private func processAccumulatedAudio() {
         guard !isProcessing, !isStopped else { return }
 
         bufferLock.lock()
-        let currentBuffers = Array(buffers)
+        let allBuffers = Array(buffers)
         bufferLock.unlock()
 
-        guard !currentBuffers.isEmpty, let format = inputFormat else { return }
+        guard !allBuffers.isEmpty, let format = inputFormat else { return }
 
         isProcessing = true
 
@@ -5798,60 +5839,104 @@ class LiveWhisperTranscriber {
                 return
             }
 
-            let nativeURL = FileManager.default.temporaryDirectory.appendingPathComponent("live_\(UUID().uuidString).caf")
-            let wavURL = FileManager.default.temporaryDirectory.appendingPathComponent("live_\(UUID().uuidString).wav")
+            let uid = UUID().uuidString.prefix(8)
+            let nativeURL = FileManager.default.temporaryDirectory.appendingPathComponent("live_\(uid).caf")
+            let wavURL = FileManager.default.temporaryDirectory.appendingPathComponent("live_\(uid).wav")
 
             defer {
                 try? FileManager.default.removeItem(at: nativeURL)
+                try? FileManager.default.removeItem(at: wavURL)
             }
 
-            // Write accumulated buffers to temp native file
+            // Use only last N seconds for constant-time processing
+            let recentBuffers = self.extractRecentBuffers(from: allBuffers, format: format)
+
+            // Write buffers to temp native file
             do {
                 let file = try AVAudioFile(forWriting: nativeURL, settings: format.settings)
-                for buf in currentBuffers {
+                for buf in recentBuffers {
                     try file.write(from: buf)
                 }
             } catch {
-                log("[Speechy] Live Whisper: Failed to write temp audio: \(error)")
+                log("[Speechy] Live Whisper: Write failed: \(error)")
                 self.isProcessing = false
                 return
             }
 
-            // Convert to whisper format (16kHz mono WAV)
-            let convertProcess = Process()
-            convertProcess.executableURL = URL(fileURLWithPath: "/usr/bin/afconvert")
-            convertProcess.arguments = [nativeURL.path, wavURL.path, "-d", "LEI16@16000", "-c", "1", "-f", "WAVE"]
-            convertProcess.standardOutput = Pipe()
-            convertProcess.standardError = Pipe()
-
+            // Convert to 16kHz mono WAV
+            let conv = Process()
+            conv.executableURL = URL(fileURLWithPath: "/usr/bin/afconvert")
+            conv.arguments = [nativeURL.path, wavURL.path, "-d", "LEI16@16000", "-c", "1", "-f", "WAVE"]
+            conv.standardOutput = Pipe()
+            conv.standardError = Pipe()
             do {
-                try convertProcess.run()
-                convertProcess.waitUntilExit()
-                guard convertProcess.terminationStatus == 0 else {
-                    log("[Speechy] Live Whisper: afconvert failed (exit \(convertProcess.terminationStatus))")
+                try conv.run()
+                conv.waitUntilExit()
+                guard conv.terminationStatus == 0 else {
                     self.isProcessing = false
                     return
                 }
             } catch {
-                log("[Speechy] Live Whisper: afconvert error: \(error)")
                 self.isProcessing = false
                 return
             }
 
             guard !self.isStopped else {
-                try? FileManager.default.removeItem(at: wavURL)
                 self.isProcessing = false
                 return
             }
 
-            // Run whisper on accumulated audio
-            self.whisperTranscriber.transcribe(audioURL: wavURL, language: self.language) { [weak self] result in
-                self?.isProcessing = false
-                try? FileManager.default.removeItem(at: wavURL)
-                if let text = result, !text.isEmpty, self?.isStopped != true {
-                    DispatchQueue.main.async {
-                        self?.onPartialResult?(text)
-                    }
+            // Run whisper-cli directly (bypasses serial transcriptionQueue for speed)
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: self.whisperPath)
+            process.arguments = [
+                "-m", self.modelPath,
+                "-l", self.language,
+                "-t", "\(self.threadCount)",  // use all available cores
+                "-bo", "1",                    // best-of-1 for fast sampling
+                "-nt",                         // no timestamps
+                "-np",                         // no progress
+                "-nfa",                        // disable flash attention (prevents hallucinations)
+                "-sns",                        // suppress non-speech tokens
+                "-nth", "0.60",
+                "-et", "2.40",
+                wavURL.path,
+            ]
+
+            // Set Metal GPU path for acceleration
+            var env = ProcessInfo.processInfo.environment
+            if let resourcePath = Bundle.main.resourcePath {
+                env["GGML_METAL_PATH_RESOURCES"] = resourcePath
+            }
+            process.environment = env
+
+            let outPipe = Pipe()
+            process.standardOutput = outPipe
+            process.standardError = Pipe()
+            self.currentProcess = process
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+            } catch {
+                log("[Speechy] Live Whisper: whisper-cli error: \(error)")
+                self.isProcessing = false
+                self.currentProcess = nil
+                return
+            }
+
+            self.currentProcess = nil
+            self.isProcessing = false
+
+            guard !self.isStopped else { return }
+
+            let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+            let text = (String(data: data, encoding: .utf8) ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if !text.isEmpty {
+                DispatchQueue.main.async {
+                    self.onPartialResult?(text)
                 }
             }
         }
@@ -5861,6 +5946,9 @@ class LiveWhisperTranscriber {
         isStopped = true
         timer?.invalidate()
         timer = nil
+        // Terminate any in-flight whisper process
+        currentProcess?.terminate()
+        currentProcess = nil
         bufferLock.lock()
         buffers.removeAll()
         bufferLock.unlock()
