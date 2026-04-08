@@ -6,7 +6,7 @@ import Carbon.HIToolbox
 import Combine
 import ServiceManagement
 
-let APP_BUILD = "2026.04.08 #8 18:39"
+let APP_BUILD = "2026.04.09 #1 01:30"
 
 // MARK: - Logger
 
@@ -5962,6 +5962,14 @@ class LiveTextWindow: NSWindow {
     private let textLabel: NSTextField
     private let container: NSView
 
+    // Typewriter animation state
+    private var displayedText: String = ""
+    private var targetText: String = ""
+    private var typewriterTimer: Timer?
+    private var cursorTimer: Timer?
+    private var cursorVisible = true
+    private var isTyping = false
+
     init() {
         let screenFrame = NSScreen.main?.visibleFrame ?? .zero
         let windowSize = NSSize(width: 500, height: 90)
@@ -5974,7 +5982,7 @@ class LiveTextWindow: NSWindow {
 
         textLabel = NSTextField(wrappingLabelWithString: "")
         textLabel.textColor = .white.withAlphaComponent(0.95)
-        textLabel.font = .systemFont(ofSize: 15, weight: .medium)
+        textLabel.font = .monospacedSystemFont(ofSize: 14, weight: .medium)
         textLabel.alignment = .center
         textLabel.backgroundColor = .clear
         textLabel.isBezeled = false
@@ -5999,13 +6007,98 @@ class LiveTextWindow: NSWindow {
 
     func updateText(_ text: String) {
         DispatchQueue.main.async {
-            self.textLabel.stringValue = text
+            self.targetText = text
+
+            // Find how much of the displayed text is still valid
+            let commonLen = self.commonPrefixLength(self.displayedText, text)
+
+            if commonLen < self.displayedText.count {
+                // Whisper corrected earlier text — snap to common prefix, then type the rest
+                self.displayedText = String(text.prefix(commonLen))
+            }
+
+            // Start typewriter if there are new characters to reveal
+            if self.displayedText.count < text.count {
+                self.startTypewriter()
+            }
         }
+    }
+
+    private func commonPrefixLength(_ a: String, _ b: String) -> Int {
+        let aArr = Array(a)
+        let bArr = Array(b)
+        var i = 0
+        while i < aArr.count && i < bArr.count && aArr[i] == bArr[i] {
+            i += 1
+        }
+        return i
+    }
+
+    private func startTypewriter() {
+        // If already typing, the running timer will pick up the new targetText automatically
+        guard typewriterTimer == nil else { return }
+
+        isTyping = true
+        startCursorBlink()
+
+        typewriterTimer = Timer.scheduledTimer(withTimeInterval: 0.028, repeats: true) { [weak self] timer in
+            guard let self = self else { timer.invalidate(); return }
+
+            if self.displayedText.count < self.targetText.count {
+                let idx = self.targetText.index(self.targetText.startIndex, offsetBy: self.displayedText.count)
+                self.displayedText.append(self.targetText[idx])
+                self.renderText()
+            } else {
+                // All characters revealed
+                timer.invalidate()
+                self.typewriterTimer = nil
+                self.isTyping = false
+                self.renderText()
+                // Stop cursor blink after a short delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                    guard let self = self, !self.isTyping else { return }
+                    self.stopCursorBlink()
+                    self.renderText()
+                }
+            }
+        }
+    }
+
+    private func renderText() {
+        if isTyping || cursorVisible {
+            textLabel.stringValue = displayedText + (cursorVisible ? "▌" : " ")
+        } else {
+            textLabel.stringValue = displayedText
+        }
+    }
+
+    private func startCursorBlink() {
+        cursorTimer?.invalidate()
+        cursorVisible = true
+        cursorTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            self.cursorVisible.toggle()
+            // Only re-render cursor blink when NOT actively typing (typing renders on its own)
+            if !self.isTyping {
+                self.renderText()
+            }
+        }
+    }
+
+    private func stopCursorBlink() {
+        cursorTimer?.invalidate()
+        cursorTimer = nil
+        cursorVisible = false
     }
 
     func show() {
         DispatchQueue.main.async {
+            self.displayedText = ""
+            self.targetText = ""
+            self.isTyping = false
             self.textLabel.stringValue = ""
+            self.startCursorBlink()
+            self.renderText()
             // Reposition in case screen changed
             let screenFrame = NSScreen.main?.visibleFrame ?? .zero
             let size = self.frame.size
@@ -6017,6 +6110,12 @@ class LiveTextWindow: NSWindow {
 
     func hide() {
         DispatchQueue.main.async {
+            self.typewriterTimer?.invalidate()
+            self.typewriterTimer = nil
+            self.stopCursorBlink()
+            self.isTyping = false
+            self.displayedText = ""
+            self.targetText = ""
             self.orderOut(nil)
             self.textLabel.stringValue = ""
         }
