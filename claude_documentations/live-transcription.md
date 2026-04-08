@@ -3,7 +3,7 @@
 ## Date: 2026-04-08
 
 ## Overview
-Added real-time (live) transcription mode using Apple's `SFSpeechRecognizer` framework. When enabled, users see transcribed text appearing in real-time as they speak, similar to Apple's built-in dictation feature.
+Added real-time (live) transcription preview using periodic Whisper processing. When enabled, users see transcribed text updating every ~3 seconds during recording via a floating overlay window.
 
 ## Version Tag
 - **v1.0.0** was tagged before this feature was implemented, allowing easy rollback if needed.
@@ -11,18 +11,22 @@ Added real-time (live) transcription mode using Apple's `SFSpeechRecognizer` fra
 
 ## Architecture
 
-### Two Transcription Modes
-1. **Standard Mode (default)**: Record -> Stop -> Whisper AI processes -> Paste result
-2. **Live Mode (new, opt-in)**: Record + SFSpeechRecognizer -> Real-time text in overlay -> Instant paste on stop
+### How It Works
+1. **Standard Mode (default)**: Record -> Stop -> Whisper processes full audio -> Paste result
+2. **Live Mode (opt-in)**: Record + periodic Whisper preview every ~3s -> Text shown in overlay -> Stop -> Whisper processes full audio -> Paste final result
+
+Both modes use Whisper for the final result — live mode just adds real-time preview during recording.
 
 ### New Classes
 
-#### `LiveTranscriber`
-- Wraps `SFSpeechRecognizer` and `SFSpeechAudioBufferRecognitionRequest`
-- Receives audio buffers from `AudioRecorder`'s tap callback
+#### `LiveWhisperTranscriber`
+- Accumulates audio buffers from `AudioRecorder`'s tap callback
+- Every 3 seconds, writes accumulated buffers to temp .caf file
+- Converts to 16kHz mono WAV via `afconvert`
+- Runs `whisper-cli` on the accumulated audio
 - Reports partial results via `onPartialResult` callback
-- Prefers on-device recognition when available (macOS 13+) for lower latency
-- Handles permission requests via static `requestPermission()` method
+- Thread-safe buffer accumulation with `NSLock`
+- Skips tick if previous transcription is still processing
 
 #### `LiveTextWindow`
 - Floating translucent window (500x90px) positioned above the recording overlay
@@ -34,25 +38,25 @@ Added real-time (live) transcription mode using Apple's `SFSpeechRecognizer` fra
 
 #### `AudioRecorder`
 - Added `onAudioBuffer: ((AVAudioPCMBuffer) -> Void)?` callback
-- Audio tap now feeds buffers to both the file writer and the live transcriber
+- Audio tap feeds copied buffers to both the file writer and the live transcriber
 
 #### `SettingsManager`
 - Added `isLiveTranscription: Bool` setting (persisted to UserDefaults, default: OFF)
 
 #### `AppDelegate`
-- `startRecording()`: When live mode is on, creates `LiveTranscriber`, shows `LiveTextWindow`, feeds audio buffers
-- `stopRecording()`: When live mode is on, gets result from speech recognizer instantly (no Whisper processing), hides overlay and text window
+- `startRecording()`: When live mode is on, creates `LiveWhisperTranscriber`, shows `LiveTextWindow`, connects buffer callback
+- `stopRecording()`: Stops live preview, then runs normal Whisper transcription for final result
 
 #### `AdvancedTab`
-- Added "Live Transcription" section with toggle, icon, and info text about permission requirements
+- Added "Live Transcription" section with toggle
 
 ## Technical Details
 
-- **Framework**: `Speech` (Apple's SFSpeechRecognizer)
-- **Permission**: Speech Recognition permission is requested on first use
-- **On-device**: Uses on-device recognition when available (no network needed)
-- **Language support**: Uses the same language code from the active hotkey slot
-- **No Whisper dependency**: Live mode bypasses Whisper entirely for instant results
+- **Engine**: Same Whisper model used for both preview and final transcription
+- **No extra permissions needed**: Uses existing microphone + whisper-cli
+- **Preview interval**: ~3 seconds (skips if previous is still processing)
+- **Final result**: Always from full audio Whisper processing (best quality)
+- **No SFSpeechRecognizer**: Pure Whisper-based, no Apple Speech framework dependency
 
 ## Settings Location
 Advanced tab > "Live Transcription" section > "Real-Time Transcription" toggle

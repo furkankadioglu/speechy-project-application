@@ -5,9 +5,8 @@ import CoreAudio
 import Carbon.HIToolbox
 import Combine
 import ServiceManagement
-import Speech
 
-let APP_BUILD = "2026.04.08 #5 15:59"
+let APP_BUILD = "2026.04.08 #7 18:33"
 
 // MARK: - Logger
 
@@ -3080,7 +3079,7 @@ struct AdvancedTab: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Real-Time Transcription")
                                     .font(.subheadline.weight(.medium))
-                                Text("See transcribed text live as you speak — uses Apple Speech Recognition instead of Whisper AI model")
+                                Text("See a live preview of transcribed text while recording. Whisper runs periodically during recording to show progress.")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -3092,21 +3091,6 @@ struct AdvancedTab: View {
                                 .labelsHidden()
                         }
                         .padding()
-
-                        if settings.isLiveTranscription {
-                            Divider()
-                                .padding(.horizontal)
-
-                            HStack(spacing: 8) {
-                                Image(systemName: "info.circle.fill")
-                                    .foregroundColor(.blue)
-                                    .font(.system(size: 14))
-                                Text("Speech Recognition permission is required. You will be prompted on first use.")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(12)
-                        }
                     }
                     .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(12)
@@ -4641,7 +4625,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var audioRecorder: AudioRecorder!
     var whisperTranscriber: WhisperTranscriber!
     var overlayWindow: OverlayWindow!
-    var liveTranscriber: LiveTranscriber?
+    var liveWhisperTranscriber: LiveWhisperTranscriber?
     var liveTextWindow: LiveTextWindow?
     var mainWindow: NSWindow?
     var splashWindow: NSWindow?
@@ -5026,37 +5010,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.overlayWindow.updateLevel(level)
         }
 
-        // Start live transcription if enabled
-        let isLive = SettingsManager.shared.isLiveTranscription
-        if isLive {
-            let lt = LiveTranscriber()
-            lt.onPartialResult = { [weak self] text in
+        // Start live whisper preview if enabled
+        if SettingsManager.shared.isLiveTranscription {
+            let lwt = LiveWhisperTranscriber(whisperTranscriber: whisperTranscriber)
+            lwt.onPartialResult = { [weak self] text in
                 self?.liveTextWindow?.updateText(text)
             }
-            self.liveTranscriber = lt
+            self.liveWhisperTranscriber = lwt
 
             if liveTextWindow == nil {
                 liveTextWindow = LiveTextWindow()
             }
             liveTextWindow?.show()
 
-            // Feed audio buffers to live recognizer
-            audioRecorder.onAudioBuffer = { [weak lt] buffer in
-                lt?.appendBuffer(buffer)
+            audioRecorder.onAudioBuffer = { [weak lwt] buffer in
+                lwt?.appendBuffer(buffer)
             }
 
-            // Request speech permission and start recognition
-            if LiveTranscriber.isAuthorized {
-                lt.start(language: language)
-            } else {
-                LiveTranscriber.requestPermission { [weak lt] granted in
-                    if granted {
-                        lt?.start(language: language)
-                    } else {
-                        log("[Speechy] Live: Speech recognition permission denied")
-                    }
-                }
-            }
+            lwt.start(language: language)
         }
 
         let uid = SettingsManager.shared.selectedInputDeviceUID
@@ -5068,74 +5039,54 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioRecorder.onAudioLevel = nil
         audioRecorder.onAudioBuffer = nil
 
-        let isLive = liveTranscriber != nil
+        // Stop live preview if active
+        liveWhisperTranscriber?.stop()
+        liveWhisperTranscriber = nil
+        DispatchQueue.main.async {
+            self.liveTextWindow?.hide()
+        }
 
-        if isLive {
-            // Live mode: get result immediately from speech recognizer
-            let finalText = liveTranscriber?.stop() ?? ""
-            liveTranscriber = nil
+        // Always use Whisper for final result (best quality)
+        DispatchQueue.main.async {
+            self.overlayWindow.setState(.processing)
+        }
 
-            DispatchQueue.main.async {
-                self.overlayWindow.setState(.hidden)
-                self.liveTextWindow?.hide()
-
-                if !finalText.isEmpty {
-                    SettingsManager.shared.addToHistory(finalText, language: self.activeLanguage)
-                    self.pasteText(finalText)
-                    LocalTTSPlayer.shared.speak(text: finalText, language: self.activeLanguage)
+        audioRecorder.stopRecording { [weak self] url in
+            guard let self = self, let audioURL = url else {
+                DispatchQueue.main.async {
+                    self?.overlayWindow.setState(.hidden)
+                    MediaControlManager.shared.resumeMediaIfNeeded()
                 }
-                MediaControlManager.shared.resumeMediaIfNeeded()
+                return
             }
 
-            // Still stop the audio recorder (discard the file, no Whisper needed)
-            audioRecorder.stopRecording { url in
-                if let url = url {
-                    try? FileManager.default.removeItem(at: url)
+            var savedAudioURL: URL? = nil
+            if SettingsManager.shared.saveAudioRecordings {
+                let dir = SettingsManager.shared.recordingsDirectory
+                let fileName = "\(UUID().uuidString).wav"
+                let destURL = dir.appendingPathComponent(fileName)
+                do {
+                    try FileManager.default.copyItem(at: audioURL, to: destURL)
+                    savedAudioURL = destURL
+                    log("[Speechy] Audio pre-saved: \(destURL.path)")
+                } catch {
+                    log("[Speechy] Failed to pre-save audio: \(error.localizedDescription)")
                 }
             }
-        } else {
-            // Standard mode: use Whisper for transcription
-            DispatchQueue.main.async {
-                self.overlayWindow.setState(.processing)
-            }
 
-            audioRecorder.stopRecording { [weak self] url in
-                guard let self = self, let audioURL = url else {
-                    DispatchQueue.main.async {
-                        self?.overlayWindow.setState(.hidden)
-                        MediaControlManager.shared.resumeMediaIfNeeded()
+            self.whisperTranscriber.transcribe(audioURL: audioURL, language: self.activeLanguage) { result in
+                DispatchQueue.main.async {
+                    self.overlayWindow.setState(.hidden)
+                    if let text = result, !text.isEmpty {
+                        SettingsManager.shared.addToHistory(text, language: self.activeLanguage, audioPath: savedAudioURL?.path)
+                        self.pasteText(text)
+                        LocalTTSPlayer.shared.speak(text: text, language: self.activeLanguage)
+                    } else if let url = savedAudioURL {
+                        try? FileManager.default.removeItem(at: url)
                     }
-                    return
+                    MediaControlManager.shared.resumeMediaIfNeeded()
                 }
-
-                var savedAudioURL: URL? = nil
-                if SettingsManager.shared.saveAudioRecordings {
-                    let dir = SettingsManager.shared.recordingsDirectory
-                    let fileName = "\(UUID().uuidString).wav"
-                    let destURL = dir.appendingPathComponent(fileName)
-                    do {
-                        try FileManager.default.copyItem(at: audioURL, to: destURL)
-                        savedAudioURL = destURL
-                        log("[Speechy] Audio pre-saved: \(destURL.path)")
-                    } catch {
-                        log("[Speechy] Failed to pre-save audio: \(error.localizedDescription)")
-                    }
-                }
-
-                self.whisperTranscriber.transcribe(audioURL: audioURL, language: self.activeLanguage) { result in
-                    DispatchQueue.main.async {
-                        self.overlayWindow.setState(.hidden)
-                        if let text = result, !text.isEmpty {
-                            SettingsManager.shared.addToHistory(text, language: self.activeLanguage, audioPath: savedAudioURL?.path)
-                            self.pasteText(text)
-                            LocalTTSPlayer.shared.speak(text: text, language: self.activeLanguage)
-                        } else if let url = savedAudioURL {
-                            try? FileManager.default.removeItem(at: url)
-                        }
-                        MediaControlManager.shared.resumeMediaIfNeeded()
-                    }
-                    try? FileManager.default.removeItem(at: audioURL)
-                }
+                try? FileManager.default.removeItem(at: audioURL)
             }
         }
     }
@@ -5559,10 +5510,10 @@ class AudioRecorder {
                 DispatchQueue.main.async { onLevel?(boosted) }
             }
 
-            // Feed buffer to live transcriber if active
+            // Feed copied buffer to live transcriber if active
             let onBuffer = self.onAudioBuffer
             if onBuffer != nil {
-                onBuffer?(buffer)
+                onBuffer?(copy)
             }
 
             self.writeQueue.async { [weak self] in
@@ -5792,80 +5743,128 @@ class AudioRecorder {
     }
 }
 
-// MARK: - Live Transcriber (Apple SFSpeechRecognizer)
+// MARK: - Live Whisper Transcriber (periodic Whisper preview during recording)
 
-class LiveTranscriber {
-    private var recognizer: SFSpeechRecognizer?
-    private var request: SFSpeechAudioBufferRecognitionRequest?
-    private var task: SFSpeechRecognitionTask?
-    private(set) var finalText: String = ""
+class LiveWhisperTranscriber {
+    private var buffers: [AVAudioPCMBuffer] = []
+    private var inputFormat: AVAudioFormat?
+    private let bufferLock = NSLock()
+    private var timer: Timer?
+    private var isProcessing = false
+    private var isStopped = false
+    private var language: String = "en"
+    private let whisperTranscriber: WhisperTranscriber
 
     var onPartialResult: ((String) -> Void)?
 
-    static func requestPermission(completion: @escaping (Bool) -> Void) {
-        SFSpeechRecognizer.requestAuthorization { status in
-            DispatchQueue.main.async {
-                completion(status == .authorized)
-            }
-        }
-    }
-
-    static var isAuthorized: Bool {
-        SFSpeechRecognizer.authorizationStatus() == .authorized
+    init(whisperTranscriber: WhisperTranscriber) {
+        self.whisperTranscriber = whisperTranscriber
     }
 
     func start(language: String) {
-        let locale = Locale(identifier: language)
-        recognizer = SFSpeechRecognizer(locale: locale)
-
-        guard recognizer?.isAvailable == true else {
-            log("[Speechy] Live: Speech recognizer not available for language: \(language)")
-            return
-        }
-
-        let req = SFSpeechAudioBufferRecognitionRequest()
-        req.shouldReportPartialResults = true
-        // Prefer on-device recognition when available (lower latency, no network)
-        if #available(macOS 13, *) {
-            if recognizer?.supportsOnDeviceRecognition == true {
-                req.requiresOnDeviceRecognition = true
-                log("[Speechy] Live: Using on-device recognition for '\(language)'")
-            } else {
-                log("[Speechy] Live: Using server-based recognition for '\(language)'")
+        self.language = language
+        self.isStopped = false
+        DispatchQueue.main.async {
+            self.timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+                self?.processAccumulatedAudio()
             }
         }
-        request = req
-
-        task = recognizer?.recognitionTask(with: req) { [weak self] result, error in
-            if let result = result {
-                let text = result.bestTranscription.formattedString
-                self?.finalText = text
-                DispatchQueue.main.async {
-                    self?.onPartialResult?(text)
-                }
-                if result.isFinal {
-                    log("[Speechy] Live: Final result — \(text.prefix(80))...")
-                }
-            }
-            if let error = error {
-                log("[Speechy] Live: Recognition error — \(error.localizedDescription)")
-            }
-        }
-        log("[Speechy] Live: Recognition started for '\(language)'")
+        log("[Speechy] Live Whisper: Started periodic transcription for '\(language)'")
     }
 
     func appendBuffer(_ buffer: AVAudioPCMBuffer) {
-        request?.append(buffer)
+        if inputFormat == nil {
+            inputFormat = buffer.format
+        }
+        bufferLock.lock()
+        buffers.append(buffer)
+        bufferLock.unlock()
     }
 
-    func stop() -> String {
-        request?.endAudio()
-        task?.finish()
-        task = nil
-        request = nil
-        recognizer = nil
-        log("[Speechy] Live: Recognition stopped — final text: \(finalText.prefix(80))...")
-        return finalText
+    private func processAccumulatedAudio() {
+        guard !isProcessing, !isStopped else { return }
+
+        bufferLock.lock()
+        let currentBuffers = Array(buffers)
+        bufferLock.unlock()
+
+        guard !currentBuffers.isEmpty, let format = inputFormat else { return }
+
+        isProcessing = true
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self, !self.isStopped else {
+                self?.isProcessing = false
+                return
+            }
+
+            let nativeURL = FileManager.default.temporaryDirectory.appendingPathComponent("live_\(UUID().uuidString).caf")
+            let wavURL = FileManager.default.temporaryDirectory.appendingPathComponent("live_\(UUID().uuidString).wav")
+
+            defer {
+                try? FileManager.default.removeItem(at: nativeURL)
+            }
+
+            // Write accumulated buffers to temp native file
+            do {
+                let file = try AVAudioFile(forWriting: nativeURL, settings: format.settings)
+                for buf in currentBuffers {
+                    try file.write(from: buf)
+                }
+            } catch {
+                log("[Speechy] Live Whisper: Failed to write temp audio: \(error)")
+                self.isProcessing = false
+                return
+            }
+
+            // Convert to whisper format (16kHz mono WAV)
+            let convertProcess = Process()
+            convertProcess.executableURL = URL(fileURLWithPath: "/usr/bin/afconvert")
+            convertProcess.arguments = [nativeURL.path, wavURL.path, "-d", "LEI16@16000", "-c", "1", "-f", "WAVE"]
+            convertProcess.standardOutput = Pipe()
+            convertProcess.standardError = Pipe()
+
+            do {
+                try convertProcess.run()
+                convertProcess.waitUntilExit()
+                guard convertProcess.terminationStatus == 0 else {
+                    log("[Speechy] Live Whisper: afconvert failed (exit \(convertProcess.terminationStatus))")
+                    self.isProcessing = false
+                    return
+                }
+            } catch {
+                log("[Speechy] Live Whisper: afconvert error: \(error)")
+                self.isProcessing = false
+                return
+            }
+
+            guard !self.isStopped else {
+                try? FileManager.default.removeItem(at: wavURL)
+                self.isProcessing = false
+                return
+            }
+
+            // Run whisper on accumulated audio
+            self.whisperTranscriber.transcribe(audioURL: wavURL, language: self.language) { [weak self] result in
+                self?.isProcessing = false
+                try? FileManager.default.removeItem(at: wavURL)
+                if let text = result, !text.isEmpty, self?.isStopped != true {
+                    DispatchQueue.main.async {
+                        self?.onPartialResult?(text)
+                    }
+                }
+            }
+        }
+    }
+
+    func stop() {
+        isStopped = true
+        timer?.invalidate()
+        timer = nil
+        bufferLock.lock()
+        buffers.removeAll()
+        bufferLock.unlock()
+        log("[Speechy] Live Whisper: Stopped")
     }
 }
 
