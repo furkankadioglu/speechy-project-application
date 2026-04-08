@@ -5,8 +5,9 @@ import CoreAudio
 import Carbon.HIToolbox
 import Combine
 import ServiceManagement
+import Speech
 
-let APP_BUILD = "2026.04.08 #3 01:48"
+let APP_BUILD = "2026.04.08 #5 15:59"
 
 // MARK: - Logger
 
@@ -1944,6 +1945,7 @@ class SettingsManager: ObservableObject {
     @Published var appLanguage: String
     @Published var showInDock: Bool
     @Published var autoPasteText: Bool
+    @Published var isLiveTranscription: Bool
 
     /// When true, hotkey triggers are suppressed (user is recording a new shortcut in settings)
     var isCapturingShortcut = false
@@ -2076,6 +2078,9 @@ class SettingsManager: ObservableObject {
         // Auto-paste: default OFF — user must opt-in to auto-paste transcribed text
         _autoPasteText = Published(initialValue: defaults.bool(forKey: "autoPasteText"))
 
+        // Live transcription: default OFF — uses Apple SFSpeechRecognizer for real-time results
+        _isLiveTranscription = Published(initialValue: defaults.bool(forKey: "isLiveTranscription"))
+
         // Auto-save and notify on changes
         $slots.dropFirst().debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.save(); self?.onSettingsChanged?() }.store(in: &cancellables)
@@ -2107,6 +2112,8 @@ class SettingsManager: ObservableObject {
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
         $autoPasteText.dropFirst()
             .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
+        $isLiveTranscription.dropFirst()
+            .sink { [weak self] _ in self?.save() }.store(in: &cancellables)
         $showInDock.dropFirst()
             .sink { show in
                 DispatchQueue.main.async {
@@ -2135,6 +2142,7 @@ class SettingsManager: ObservableObject {
         _modalConfig = Published(initialValue: .default)
         _appLanguage = Published(initialValue: "en")
         _autoPasteText = Published(initialValue: false)
+        _isLiveTranscription = Published(initialValue: false)
     }
     #endif
 
@@ -2174,6 +2182,7 @@ class SettingsManager: ObservableObject {
         defaults.set(appLanguage, forKey: "appLanguage")
         defaults.set(showInDock, forKey: "showInDock")
         defaults.set(autoPasteText, forKey: "autoPasteText")
+        defaults.set(isLiveTranscription, forKey: "isLiveTranscription")
     }
 
     /// Builds the whisper --prompt string from saved words + modal config hint.
@@ -3052,6 +3061,52 @@ struct AdvancedTab: View {
                                 .labelsHidden()
                         }
                         .padding()
+                    }
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(12)
+                }
+
+                // Section: Live Transcription
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeader(icon: "text.bubble.fill", title: "Live Transcription", color: .green)
+
+                    VStack(spacing: 0) {
+                        HStack(alignment: .top, spacing: 14) {
+                            Image(systemName: "waveform.and.mic")
+                                .font(.system(size: 20))
+                                .foregroundColor(.green)
+                                .frame(width: 28)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Real-Time Transcription")
+                                    .font(.subheadline.weight(.medium))
+                                Text("See transcribed text live as you speak — uses Apple Speech Recognition instead of Whisper AI model")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+
+                            Toggle("", isOn: $settings.isLiveTranscription)
+                                .toggleStyle(SwitchToggleStyle(tint: .green))
+                                .labelsHidden()
+                        }
+                        .padding()
+
+                        if settings.isLiveTranscription {
+                            Divider()
+                                .padding(.horizontal)
+
+                            HStack(spacing: 8) {
+                                Image(systemName: "info.circle.fill")
+                                    .foregroundColor(.blue)
+                                    .font(.system(size: 14))
+                                Text("Speech Recognition permission is required. You will be prompted on first use.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(12)
+                        }
                     }
                     .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(12)
@@ -4586,6 +4641,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var audioRecorder: AudioRecorder!
     var whisperTranscriber: WhisperTranscriber!
     var overlayWindow: OverlayWindow!
+    var liveTranscriber: LiveTranscriber?
+    var liveTextWindow: LiveTextWindow?
     var mainWindow: NSWindow?
     var splashWindow: NSWindow?
 
@@ -4968,6 +5025,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioRecorder.onAudioLevel = { [weak self] level in
             self?.overlayWindow.updateLevel(level)
         }
+
+        // Start live transcription if enabled
+        let isLive = SettingsManager.shared.isLiveTranscription
+        if isLive {
+            let lt = LiveTranscriber()
+            lt.onPartialResult = { [weak self] text in
+                self?.liveTextWindow?.updateText(text)
+            }
+            self.liveTranscriber = lt
+
+            if liveTextWindow == nil {
+                liveTextWindow = LiveTextWindow()
+            }
+            liveTextWindow?.show()
+
+            // Feed audio buffers to live recognizer
+            audioRecorder.onAudioBuffer = { [weak lt] buffer in
+                lt?.appendBuffer(buffer)
+            }
+
+            // Request speech permission and start recognition
+            if LiveTranscriber.isAuthorized {
+                lt.start(language: language)
+            } else {
+                LiveTranscriber.requestPermission { [weak lt] granted in
+                    if granted {
+                        lt?.start(language: language)
+                    } else {
+                        log("[Speechy] Live: Speech recognition permission denied")
+                    }
+                }
+            }
+        }
+
         let uid = SettingsManager.shared.selectedInputDeviceUID
         audioRecorder.startRecording(deviceUID: uid == "system_default" ? nil : uid)
     }
@@ -4975,52 +5066,76 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func stopRecording() {
         log("[Speechy] Recording stopped")
         audioRecorder.onAudioLevel = nil
-        DispatchQueue.main.async {
-            self.overlayWindow.setState(.processing)
-        }
+        audioRecorder.onAudioBuffer = nil
 
-        audioRecorder.stopRecording { [weak self] url in
-            guard let self = self, let audioURL = url else {
-                DispatchQueue.main.async {
-                    self?.overlayWindow.setState(.hidden)
-                    // Resume media even if recording produced no audio
-                    MediaControlManager.shared.resumeMediaIfNeeded()
+        let isLive = liveTranscriber != nil
+
+        if isLive {
+            // Live mode: get result immediately from speech recognizer
+            let finalText = liveTranscriber?.stop() ?? ""
+            liveTranscriber = nil
+
+            DispatchQueue.main.async {
+                self.overlayWindow.setState(.hidden)
+                self.liveTextWindow?.hide()
+
+                if !finalText.isEmpty {
+                    SettingsManager.shared.addToHistory(finalText, language: self.activeLanguage)
+                    self.pasteText(finalText)
+                    LocalTTSPlayer.shared.speak(text: finalText, language: self.activeLanguage)
                 }
-                return
+                MediaControlManager.shared.resumeMediaIfNeeded()
             }
 
-            // If saving audio is enabled, copy the file BEFORE whisper processes it
-            // because the temp file may be deleted during/after transcription
-            var savedAudioURL: URL? = nil
-            if SettingsManager.shared.saveAudioRecordings {
-                let dir = SettingsManager.shared.recordingsDirectory
-                let fileName = "\(UUID().uuidString).wav"
-                let destURL = dir.appendingPathComponent(fileName)
-                do {
-                    try FileManager.default.copyItem(at: audioURL, to: destURL)
-                    savedAudioURL = destURL
-                    log("[Speechy] Audio pre-saved: \(destURL.path)")
-                } catch {
-                    log("[Speechy] Failed to pre-save audio: \(error.localizedDescription)")
+            // Still stop the audio recorder (discard the file, no Whisper needed)
+            audioRecorder.stopRecording { url in
+                if let url = url {
+                    try? FileManager.default.removeItem(at: url)
                 }
             }
+        } else {
+            // Standard mode: use Whisper for transcription
+            DispatchQueue.main.async {
+                self.overlayWindow.setState(.processing)
+            }
 
-            self.whisperTranscriber.transcribe(audioURL: audioURL, language: self.activeLanguage) { result in
-                DispatchQueue.main.async {
-                    self.overlayWindow.setState(.hidden)
-                    if let text = result, !text.isEmpty {
-                        SettingsManager.shared.addToHistory(text, language: self.activeLanguage, audioPath: savedAudioURL?.path)
-                        self.pasteText(text)
-                        // Read transcription aloud if TTS is enabled (accessibility)
-                        LocalTTSPlayer.shared.speak(text: text, language: self.activeLanguage)
-                    } else if let url = savedAudioURL {
-                        // Transcription failed/empty — clean up the saved audio
-                        try? FileManager.default.removeItem(at: url)
+            audioRecorder.stopRecording { [weak self] url in
+                guard let self = self, let audioURL = url else {
+                    DispatchQueue.main.async {
+                        self?.overlayWindow.setState(.hidden)
+                        MediaControlManager.shared.resumeMediaIfNeeded()
                     }
-                    // Resume media after transcription is complete
-                    MediaControlManager.shared.resumeMediaIfNeeded()
+                    return
                 }
-                try? FileManager.default.removeItem(at: audioURL)
+
+                var savedAudioURL: URL? = nil
+                if SettingsManager.shared.saveAudioRecordings {
+                    let dir = SettingsManager.shared.recordingsDirectory
+                    let fileName = "\(UUID().uuidString).wav"
+                    let destURL = dir.appendingPathComponent(fileName)
+                    do {
+                        try FileManager.default.copyItem(at: audioURL, to: destURL)
+                        savedAudioURL = destURL
+                        log("[Speechy] Audio pre-saved: \(destURL.path)")
+                    } catch {
+                        log("[Speechy] Failed to pre-save audio: \(error.localizedDescription)")
+                    }
+                }
+
+                self.whisperTranscriber.transcribe(audioURL: audioURL, language: self.activeLanguage) { result in
+                    DispatchQueue.main.async {
+                        self.overlayWindow.setState(.hidden)
+                        if let text = result, !text.isEmpty {
+                            SettingsManager.shared.addToHistory(text, language: self.activeLanguage, audioPath: savedAudioURL?.path)
+                            self.pasteText(text)
+                            LocalTTSPlayer.shared.speak(text: text, language: self.activeLanguage)
+                        } else if let url = savedAudioURL {
+                            try? FileManager.default.removeItem(at: url)
+                        }
+                        MediaControlManager.shared.resumeMediaIfNeeded()
+                    }
+                    try? FileManager.default.removeItem(at: audioURL)
+                }
             }
         }
     }
@@ -5377,6 +5492,7 @@ class AudioRecorder {
     private var recordingStartTime: Date?
     private let writeQueue = DispatchQueue(label: "com.speechy.audiowrite")
     var onAudioLevel: ((Float) -> Void)?
+    var onAudioBuffer: ((AVAudioPCMBuffer) -> Void)?
 
     func startRecording(deviceUID: String? = nil) {
         let engine = AVAudioEngine()
@@ -5441,6 +5557,12 @@ class AudioRecorder {
             let onLevel = self.onAudioLevel
             if onLevel != nil {
                 DispatchQueue.main.async { onLevel?(boosted) }
+            }
+
+            // Feed buffer to live transcriber if active
+            let onBuffer = self.onAudioBuffer
+            if onBuffer != nil {
+                onBuffer?(buffer)
             }
 
             self.writeQueue.async { [weak self] in
@@ -5666,6 +5788,150 @@ class AudioRecorder {
         } catch {
             log("[Speechy] afconvert error: \(error)")
             return false
+        }
+    }
+}
+
+// MARK: - Live Transcriber (Apple SFSpeechRecognizer)
+
+class LiveTranscriber {
+    private var recognizer: SFSpeechRecognizer?
+    private var request: SFSpeechAudioBufferRecognitionRequest?
+    private var task: SFSpeechRecognitionTask?
+    private(set) var finalText: String = ""
+
+    var onPartialResult: ((String) -> Void)?
+
+    static func requestPermission(completion: @escaping (Bool) -> Void) {
+        SFSpeechRecognizer.requestAuthorization { status in
+            DispatchQueue.main.async {
+                completion(status == .authorized)
+            }
+        }
+    }
+
+    static var isAuthorized: Bool {
+        SFSpeechRecognizer.authorizationStatus() == .authorized
+    }
+
+    func start(language: String) {
+        let locale = Locale(identifier: language)
+        recognizer = SFSpeechRecognizer(locale: locale)
+
+        guard recognizer?.isAvailable == true else {
+            log("[Speechy] Live: Speech recognizer not available for language: \(language)")
+            return
+        }
+
+        let req = SFSpeechAudioBufferRecognitionRequest()
+        req.shouldReportPartialResults = true
+        // Prefer on-device recognition when available (lower latency, no network)
+        if #available(macOS 13, *) {
+            if recognizer?.supportsOnDeviceRecognition == true {
+                req.requiresOnDeviceRecognition = true
+                log("[Speechy] Live: Using on-device recognition for '\(language)'")
+            } else {
+                log("[Speechy] Live: Using server-based recognition for '\(language)'")
+            }
+        }
+        request = req
+
+        task = recognizer?.recognitionTask(with: req) { [weak self] result, error in
+            if let result = result {
+                let text = result.bestTranscription.formattedString
+                self?.finalText = text
+                DispatchQueue.main.async {
+                    self?.onPartialResult?(text)
+                }
+                if result.isFinal {
+                    log("[Speechy] Live: Final result — \(text.prefix(80))...")
+                }
+            }
+            if let error = error {
+                log("[Speechy] Live: Recognition error — \(error.localizedDescription)")
+            }
+        }
+        log("[Speechy] Live: Recognition started for '\(language)'")
+    }
+
+    func appendBuffer(_ buffer: AVAudioPCMBuffer) {
+        request?.append(buffer)
+    }
+
+    func stop() -> String {
+        request?.endAudio()
+        task?.finish()
+        task = nil
+        request = nil
+        recognizer = nil
+        log("[Speechy] Live: Recognition stopped — final text: \(finalText.prefix(80))...")
+        return finalText
+    }
+}
+
+// MARK: - Live Text Overlay Window
+
+class LiveTextWindow: NSWindow {
+    private let textLabel: NSTextField
+    private let container: NSView
+
+    init() {
+        let screenFrame = NSScreen.main?.visibleFrame ?? .zero
+        let windowSize = NSSize(width: 500, height: 90)
+        let windowOrigin = NSPoint(x: screenFrame.midX - windowSize.width / 2, y: screenFrame.minY + 240)
+
+        container = NSView(frame: NSRect(x: 0, y: 0, width: Int(windowSize.width), height: Int(windowSize.height)))
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.85).cgColor
+        container.layer?.cornerRadius = 16
+
+        textLabel = NSTextField(wrappingLabelWithString: "")
+        textLabel.textColor = .white.withAlphaComponent(0.95)
+        textLabel.font = .systemFont(ofSize: 15, weight: .medium)
+        textLabel.alignment = .center
+        textLabel.backgroundColor = .clear
+        textLabel.isBezeled = false
+        textLabel.isEditable = false
+        textLabel.isSelectable = false
+        textLabel.maximumNumberOfLines = 3
+        textLabel.cell?.truncatesLastVisibleLine = true
+        textLabel.frame = NSRect(x: 16, y: 12, width: Int(windowSize.width) - 32, height: Int(windowSize.height) - 24)
+
+        container.addSubview(textLabel)
+
+        super.init(contentRect: NSRect(origin: windowOrigin, size: windowSize),
+                   styleMask: .borderless, backing: .buffered, defer: false)
+
+        self.isOpaque = false
+        self.backgroundColor = .clear
+        self.level = .floating
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary]
+        self.ignoresMouseEvents = true
+        self.contentView = container
+    }
+
+    func updateText(_ text: String) {
+        DispatchQueue.main.async {
+            self.textLabel.stringValue = text
+        }
+    }
+
+    func show() {
+        DispatchQueue.main.async {
+            self.textLabel.stringValue = ""
+            // Reposition in case screen changed
+            let screenFrame = NSScreen.main?.visibleFrame ?? .zero
+            let size = self.frame.size
+            let origin = NSPoint(x: screenFrame.midX - size.width / 2, y: screenFrame.minY + 240)
+            self.setFrameOrigin(origin)
+            self.orderFront(nil)
+        }
+    }
+
+    func hide() {
+        DispatchQueue.main.async {
+            self.orderOut(nil)
+            self.textLabel.stringValue = ""
         }
     }
 }
