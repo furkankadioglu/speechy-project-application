@@ -6,7 +6,7 @@ import Carbon.HIToolbox
 import Combine
 import ServiceManagement
 
-let APP_BUILD = "2026.04.09 #1 01:30"
+let APP_BUILD = "2026.04.09 #2 01:36"
 
 // MARK: - Logger
 
@@ -5889,7 +5889,7 @@ class LiveWhisperTranscriber {
             // Run whisper-cli directly (bypasses serial transcriptionQueue for speed)
             let process = Process()
             process.executableURL = URL(fileURLWithPath: self.whisperPath)
-            process.arguments = [
+            var args = [
                 "-m", self.modelPath,
                 "-l", self.language,
                 "-t", "\(self.threadCount)",  // use all available cores
@@ -5900,8 +5900,13 @@ class LiveWhisperTranscriber {
                 "-sns",                        // suppress non-speech tokens
                 "-nth", "0.60",
                 "-et", "2.40",
-                wavURL.path,
             ]
+            // Use same prompt as main transcriber (saved words + modal config)
+            if let prompt = SettingsManager.shared.whisperPrompt {
+                args += ["--prompt", prompt]
+            }
+            args.append(wavURL.path)
+            process.arguments = args
 
             // Set Metal GPU path for acceleration
             var env = ProcessInfo.processInfo.environment
@@ -5931,15 +5936,82 @@ class LiveWhisperTranscriber {
             guard !self.isStopped else { return }
 
             let data = outPipe.fileHandleForReading.readDataToEndOfFile()
-            let text = (String(data: data, encoding: .utf8) ?? "")
+            var text = (String(data: data, encoding: .utf8) ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
-            if !text.isEmpty {
+            // Remove repeated phrases/words (common whisper hallucination)
+            text = self.removeRepetitions(text)
+
+            if !text.isEmpty && text.count >= 2 {
                 DispatchQueue.main.async {
                     self.onPartialResult?(text)
                 }
             }
         }
+    }
+
+    /// Detect and remove repeated words/phrases — a common Whisper hallucination
+    private func removeRepetitions(_ text: String) -> String {
+        var result = text
+
+        // 1) Remove consecutive duplicate words: "hello hello world" → "hello world"
+        let words = result.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        if words.count >= 2 {
+            var deduped: [String] = [words[0]]
+            for i in 1..<words.count {
+                if words[i].lowercased() != words[i - 1].lowercased() {
+                    deduped.append(words[i])
+                }
+            }
+            result = deduped.joined(separator: " ")
+        }
+
+        // 2) Remove repeated phrases (2-5 word sequences that appear 3+ times)
+        for phraseLen in 2...5 {
+            let phraseWords = result.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+            guard phraseWords.count >= phraseLen * 3 else { continue }
+
+            for start in 0...(phraseWords.count - phraseLen) {
+                let phrase = phraseWords[start..<(start + phraseLen)].joined(separator: " ").lowercased()
+                var count = 0
+                var i = 0
+                while i <= phraseWords.count - phraseLen {
+                    let candidate = phraseWords[i..<(i + phraseLen)].joined(separator: " ").lowercased()
+                    if candidate == phrase {
+                        count += 1
+                        i += phraseLen
+                    } else {
+                        i += 1
+                    }
+                }
+                if count >= 3 {
+                    // Keep first occurrence, remove subsequent consecutive duplicates
+                    var cleaned: [String] = []
+                    var j = 0
+                    var kept = false
+                    while j < phraseWords.count {
+                        if j <= phraseWords.count - phraseLen {
+                            let seg = phraseWords[j..<(j + phraseLen)].joined(separator: " ").lowercased()
+                            if seg == phrase {
+                                if !kept {
+                                    cleaned.append(contentsOf: phraseWords[j..<(j + phraseLen)])
+                                    kept = true
+                                }
+                                j += phraseLen
+                                continue
+                            }
+                        }
+                        cleaned.append(phraseWords[j])
+                        kept = false
+                        j += 1
+                    }
+                    result = cleaned.joined(separator: " ")
+                    break // Re-check with new text
+                }
+            }
+        }
+
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func stop() {
@@ -5982,7 +6054,7 @@ class LiveTextWindow: NSWindow {
 
         textLabel = NSTextField(wrappingLabelWithString: "")
         textLabel.textColor = .white.withAlphaComponent(0.95)
-        textLabel.font = .monospacedSystemFont(ofSize: 14, weight: .medium)
+        textLabel.font = .systemFont(ofSize: 15, weight: .medium)
         textLabel.alignment = .center
         textLabel.backgroundColor = .clear
         textLabel.isBezeled = false
