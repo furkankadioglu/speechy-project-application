@@ -6,7 +6,7 @@ import Carbon.HIToolbox
 import Combine
 import ServiceManagement
 
-let APP_BUILD = "2026.04.14 #1 23:20"
+let APP_BUILD = "2026.04.17 #2 01:21"
 
 // MARK: - Logger
 
@@ -5456,10 +5456,19 @@ class HotkeyManager {
         permissionCheckTimer = nil
         delayTimer?.invalidate()
         delayTimer = nil
-        if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: false) }
-        if let source = runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes) }
+        if let source = runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
+        }
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFMachPortInvalidate(tap)
+        }
         eventTap = nil
         runLoopSource = nil
+    }
+
+    deinit {
+        stopListening()
     }
 }
 
@@ -5471,10 +5480,13 @@ class AudioRecorder {
     private var finalURL: URL?
     private var recordingStartTime: Date?
     private let writeQueue = DispatchQueue(label: "com.speechy.audiowrite")
+    // Set to true after the first write error so we only log once per recording.
+    private var writeErrorLogged = false
     var onAudioLevel: ((Float) -> Void)?
     var onAudioBuffer: ((AVAudioPCMBuffer) -> Void)?
 
     func startRecording(deviceUID: String? = nil) {
+        writeErrorLogged = false
         let engine = AVAudioEngine()
 
         // Set input device if specified
@@ -5546,7 +5558,15 @@ class AudioRecorder {
             }
 
             self.writeQueue.async { [weak self] in
-                try? self?.nativeFile?.write(from: copy)
+                guard let self = self, let file = self.nativeFile else { return }
+                do {
+                    try file.write(from: copy)
+                } catch {
+                    if !self.writeErrorLogged {
+                        self.writeErrorLogged = true
+                        log("[Speechy] ERROR: audio write failed (first occurrence): \(error)")
+                    }
+                }
             }
         }
 
@@ -5777,7 +5797,9 @@ class AudioRecorder {
 class LiveWhisperTranscriber {
     private var buffers: [AVAudioPCMBuffer] = []
     private var inputFormat: AVAudioFormat?
-    private let bufferLock = NSLock()
+    // Single lock protects all mutable state (buffers, flags, currentProcess)
+    // to avoid races between the 2s timer task, the audio tap thread, and stop()
+    private let stateLock = NSLock()
     private var timer: Timer?
     private var currentProcess: Process?
     private var isProcessing = false
@@ -5814,9 +5836,12 @@ class LiveWhisperTranscriber {
     }
 
     func start(language: String) {
+        stateLock.lock()
         self.language = language
         self.isStopped = false
-        DispatchQueue.main.async {
+        stateLock.unlock()
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             self.timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
                 self?.processAccumulatedAudio()
             }
@@ -5825,30 +5850,53 @@ class LiveWhisperTranscriber {
     }
 
     func appendBuffer(_ buffer: AVAudioPCMBuffer) {
+        stateLock.lock()
         if inputFormat == nil {
             inputFormat = buffer.format
         }
-        bufferLock.lock()
-        buffers.append(buffer)
-        bufferLock.unlock()
+        if !isStopped {
+            buffers.append(buffer)
+        }
+        stateLock.unlock()
     }
 
     private func processAccumulatedAudio() {
-        guard !isProcessing, !isStopped else { return }
-
-        bufferLock.lock()
-        let allBuffers = Array(buffers)
-        bufferLock.unlock()
-
-        guard !allBuffers.isEmpty, let format = inputFormat else { return }
-
+        stateLock.lock()
+        if isProcessing || isStopped {
+            stateLock.unlock()
+            return
+        }
+        let allBuffers = buffers
+        let format = inputFormat
+        guard !allBuffers.isEmpty, let format = format else {
+            stateLock.unlock()
+            return
+        }
         isProcessing = true
+        stateLock.unlock()
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self, !self.isStopped else {
-                self?.isProcessing = false
-                return
+            guard let self = self else { return }
+
+            // Single exit point that clears the processing flag atomically
+            let finish: (String?) -> Void = { [weak self] result in
+                guard let self = self else { return }
+                self.stateLock.lock()
+                self.isProcessing = false
+                self.currentProcess = nil
+                let stopped = self.isStopped
+                self.stateLock.unlock()
+                if let text = result, !stopped {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onPartialResult?(text)
+                    }
+                }
             }
+
+            self.stateLock.lock()
+            let stoppedEarly = self.isStopped
+            self.stateLock.unlock()
+            if stoppedEarly { finish(nil); return }
 
             let uid = UUID().uuidString.prefix(8)
             let nativeURL = FileManager.default.temporaryDirectory.appendingPathComponent("live_\(uid).caf")
@@ -5867,7 +5915,7 @@ class LiveWhisperTranscriber {
                 }
             } catch {
                 log("[Speechy] Live Whisper: Write failed: \(error)")
-                self.isProcessing = false
+                finish(nil)
                 return
             }
 
@@ -5881,16 +5929,11 @@ class LiveWhisperTranscriber {
                 try conv.run()
                 conv.waitUntilExit()
                 guard conv.terminationStatus == 0 else {
-                    self.isProcessing = false
+                    finish(nil)
                     return
                 }
             } catch {
-                self.isProcessing = false
-                return
-            }
-
-            guard !self.isStopped else {
-                self.isProcessing = false
+                finish(nil)
                 return
             }
 
@@ -5926,22 +5969,25 @@ class LiveWhisperTranscriber {
             let outPipe = Pipe()
             process.standardOutput = outPipe
             process.standardError = Pipe()
+
+            // Check stop flag and publish process atomically so stop() can terminate it
+            self.stateLock.lock()
+            if self.isStopped {
+                self.stateLock.unlock()
+                finish(nil)
+                return
+            }
             self.currentProcess = process
+            self.stateLock.unlock()
 
             do {
                 try process.run()
                 process.waitUntilExit()
             } catch {
                 log("[Speechy] Live Whisper: whisper-cli error: \(error)")
-                self.isProcessing = false
-                self.currentProcess = nil
+                finish(nil)
                 return
             }
-
-            self.currentProcess = nil
-            self.isProcessing = false
-
-            guard !self.isStopped else { return }
 
             let data = outPipe.fileHandleForReading.readDataToEndOfFile()
             var text = (String(data: data, encoding: .utf8) ?? "")
@@ -5951,9 +5997,9 @@ class LiveWhisperTranscriber {
             text = self.removeRepetitions(text)
 
             if !text.isEmpty && text.count >= 2 {
-                DispatchQueue.main.async {
-                    self.onPartialResult?(text)
-                }
+                finish(text)
+            } else {
+                finish(nil)
             }
         }
     }
@@ -6023,15 +6069,26 @@ class LiveWhisperTranscriber {
     }
 
     func stop() {
+        stateLock.lock()
         isStopped = true
-        timer?.invalidate()
-        timer = nil
-        // Terminate any in-flight whisper process
-        currentProcess?.terminate()
+        let processToTerminate = currentProcess
         currentProcess = nil
-        bufferLock.lock()
         buffers.removeAll()
-        bufferLock.unlock()
+        stateLock.unlock()
+
+        // Terminate any in-flight whisper process (outside lock — terminate can block briefly)
+        processToTerminate?.terminate()
+
+        // Timer operates on the main run loop; invalidate there
+        if Thread.isMainThread {
+            timer?.invalidate()
+            timer = nil
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.timer?.invalidate()
+                self?.timer = nil
+            }
+        }
         log("[Speechy] Live Whisper: Stopped")
     }
 }
