@@ -1,0 +1,14 @@
+{
+  "valid": [
+    "test.user+alpha@speechy-test.invalid",
+    "test.user+beta@speechy-test.invalid",
+    "test.user+gamma@speechy-test.invalid"
+  ],
+  "invalid": [
+    "not-an-email",
+    "missing@tld",
+    "@no-local.invalid",
+    ""
+  ],
+  "collision_target": "collision@speechy-test.invalid"
+}
