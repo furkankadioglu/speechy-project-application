@@ -6,3 +6,10 @@ __pycache__/
 licensing/config.php
 .claude/settings.json
 .build-count
+
+# Test artifacts
+tests/logs/
+tests/ui/node_modules/
+tests/ui/playwright-report/
+tests/ui/test-results/
+desktop/SpeechToText/.build-test/
