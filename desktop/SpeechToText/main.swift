@@ -636,10 +636,13 @@ class LicenseManager: ObservableObject {
     private var hourlyLicenseTimer: Timer?
     private var _machineIDCache: String?
 
+    // Backing store for UserDefaults — injectable for tests
+    private var defaults: UserDefaults = .standard
+
     var storedLicenseKey: String? {
-        get { UserDefaults.standard.string(forKey: licenseKeyKey) }
+        get { defaults.string(forKey: licenseKeyKey) }
         set {
-            UserDefaults.standard.set(newValue, forKey: licenseKeyKey)
+            defaults.set(newValue, forKey: licenseKeyKey)
             if newValue == nil {
                 isLicensed = false
                 licenseStatus = ""
@@ -651,7 +654,7 @@ class LicenseManager: ObservableObject {
         // In-memory cache: avoids repeated subprocess spawns during the same session
         if let cached = _machineIDCache { return cached }
         // UserDefaults cache: avoids ioreg on every launch
-        if let saved = UserDefaults.standard.string(forKey: "speechy_machine_id") {
+        if let saved = defaults.string(forKey: "speechy_machine_id") {
             _machineIDCache = saved
             return saved
         }
@@ -670,14 +673,14 @@ class LicenseManager: ObservableObject {
             if let end = output[start...].firstIndex(of: "\"") {
                 let id = String(output[start..<end])
                 _machineIDCache = id
-                UserDefaults.standard.set(id, forKey: "speechy_machine_id")
+                defaults.set(id, forKey: "speechy_machine_id")
                 return id
             }
         }
         // Final fallback: generate and persist a UUID
         let newID = UUID().uuidString
         _machineIDCache = newID
-        UserDefaults.standard.set(newID, forKey: "speechy_machine_id")
+        defaults.set(newID, forKey: "speechy_machine_id")
         return newID
     }
 
@@ -688,9 +691,20 @@ class LicenseManager: ObservableObject {
     init() {
         // Check cached license status (for offline startup)
         if storedLicenseKey != nil {
-            isLicensed = UserDefaults.standard.bool(forKey: licenseStatusKey)
+            isLicensed = defaults.bool(forKey: licenseStatusKey)
         }
     }
+
+    #if TESTING
+    /// Test-only init: injects an isolated UserDefaults suite so tests don't pollute real defaults
+    init(testDefaults: UserDefaults) {
+        self.defaults = testDefaults
+        // Check cached license status from the injected suite
+        if testDefaults.string(forKey: licenseKeyKey) != nil {
+            isLicensed = testDefaults.bool(forKey: licenseStatusKey)
+        }
+    }
+    #endif
 
     func verifyAndActivate(licenseKey: String, completion: @escaping (Bool, String) -> Void) {
         // First verify the license
@@ -2140,6 +2154,7 @@ class SettingsManager: ObservableObject {
         _savedWords = Published(initialValue: [])
         _modalConfig = Published(initialValue: .default)
         _appLanguage = Published(initialValue: "en")
+        _showInDock = Published(initialValue: true)
         _autoPasteText = Published(initialValue: false)
         _isLiveTranscription = Published(initialValue: false)
     }
@@ -5470,6 +5485,31 @@ class HotkeyManager {
     deinit {
         stopListening()
     }
+
+    #if TESTING
+    /// Expose cooldownUntil for testing the 0.5s cooldown after stopCurrentRecording
+    var testCooldownUntil: Date { cooldownUntil }
+
+    /// Expose configForID for test assertions
+    func testConfigForID(_ id: UUID) -> HotkeyConfig? { configForID(id) }
+
+    /// Directly simulate a recording start + stop cycle for pipeline tests.
+    /// Fires onRecordingStart immediately (bypasses delay timer), then
+    /// calls stopCurrentRecording() so onRecordingStop is queued.
+    func testSimulateRecordingCycle(language: String, flag: String) {
+        isRecording = true
+        activeSlotID = slotConfigs.first?.id
+        isToggleMode = false
+        DispatchQueue.main.async { self.onRecordingStart?(language, flag) }
+        stopCurrentRecording()
+    }
+
+    /// Replace internal slot list without touching SettingsManager.shared
+    func testSetConfigs(_ configs: [HotkeyConfig], activationDelay delay: Double = 0.15) {
+        slotConfigs = configs
+        activationDelay = delay
+    }
+    #endif
 }
 
 // MARK: - Audio Recorder
@@ -5484,6 +5524,11 @@ class AudioRecorder {
     private var writeErrorLogged = false
     var onAudioLevel: ((Float) -> Void)?
     var onAudioBuffer: ((AVAudioPCMBuffer) -> Void)?
+
+    #if TESTING
+    /// Expose write-error flag for testing reset behavior on startRecording
+    var testWriteErrorLogged: Bool { writeErrorLogged }
+    #endif
 
     func startRecording(deviceUID: String? = nil) {
         writeErrorLogged = false
@@ -6067,6 +6112,16 @@ class LiveWhisperTranscriber {
 
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    #if TESTING
+    /// Expose removeRepetitions for unit testing without running Whisper
+    func testRemoveRepetitions(_ text: String) -> String {
+        return removeRepetitions(text)
+    }
+
+    /// Expose isStopped flag for testing
+    var testIsStopped: Bool { isStopped }
+    #endif
 
     func stop() {
         stateLock.lock()
