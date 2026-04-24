@@ -6,7 +6,7 @@ import Carbon.HIToolbox
 import Combine
 import ServiceManagement
 
-let APP_BUILD = "2026.04.17 #2 01:21"
+let APP_BUILD = "2026.04.24 #1 16:18"
 
 // MARK: - Logger
 
