@@ -973,6 +973,126 @@ class LicenseManager: ObservableObject {
     }
 }
 
+// MARK: - App Store Receipt Validator
+#if APP_STORE
+/// Validates the Mac App Store receipt that ships in `Bundle/Contents/_MASReceipt/receipt`.
+/// Bypasses the custom license server entirely. Used only when the binary is built with
+/// `-DAPP_STORE` for the Mac App Store distribution channel.
+class AppStoreReceipt: ObservableObject {
+    static let shared = AppStoreReceipt()
+
+    private let backendURL = "https://speechy.frkn.com.tr/api/receipt/verify"
+    private let lastVerifiedKey = "speechy_receipt_last_verified"
+    private let cachedTransactionKey = "speechy_receipt_transaction_id"
+    private let offlineGraceSeconds: Double = 7 * 86400
+
+    @Published var isValid = false
+    @Published var transactionID: String = ""
+
+    private var defaults: UserDefaults = .standard
+
+    /// Synchronous gate. Called before `NSApplication.run()`. If the receipt file is missing,
+    /// `exit(173)` triggers macOS to prompt the user for their Apple ID and download a fresh
+    /// receipt — then the OS relaunches the app automatically.
+    static func gateOrExit() {
+        guard let url = Bundle.main.appStoreReceiptURL else {
+            // Bundle not Mac App Store managed at all — refuse to run
+            FileHandle.standardError.write("Speechy: no receipt URL — exiting\n".data(using: .utf8)!)
+            exit(173)
+        }
+        if !FileManager.default.fileExists(atPath: url.path) {
+            FileHandle.standardError.write("Speechy: receipt missing — requesting from App Store\n".data(using: .utf8)!)
+            exit(173)
+        }
+        if let data = try? Data(contentsOf: url), data.isEmpty {
+            exit(173)
+        }
+    }
+
+    init() {
+        // Trust last good verification within the offline grace window
+        let last = defaults.double(forKey: lastVerifiedKey)
+        if last > 0, Date().timeIntervalSince1970 - last < offlineGraceSeconds {
+            isValid = true
+            transactionID = defaults.string(forKey: cachedTransactionKey) ?? ""
+        }
+    }
+
+    /// Sends the receipt to our backend for Apple-side verification. Backend calls Apple's
+    /// `verifyReceipt` endpoint (production with sandbox fallback) and returns bundle_id +
+    /// transaction_id + status. Called on launch and once per 24h.
+    func verifyOnline(completion: ((Bool) -> Void)? = nil) {
+        guard let url = Bundle.main.appStoreReceiptURL,
+              let data = try? Data(contentsOf: url), !data.isEmpty else {
+            DispatchQueue.main.async {
+                self.isValid = false
+                completion?(false)
+            }
+            return
+        }
+
+        let receiptB64 = data.base64EncodedString()
+        var req = URLRequest(url: URL(string: backendURL)!)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "receipt": receiptB64,
+            "bundle_id": Bundle.main.bundleIdentifier ?? "",
+        ])
+        req.timeoutInterval = 15
+
+        URLSession.shared.dataTask(with: req) { [weak self] data, _, error in
+            guard let self = self else { return }
+            if let error = error {
+                log("[Speechy] Receipt verify error: \(error.localizedDescription)")
+                // Network failure: keep last-known-good if within grace window
+                let last = self.defaults.double(forKey: self.lastVerifiedKey)
+                let stillValid = Date().timeIntervalSince1970 - last < self.offlineGraceSeconds
+                DispatchQueue.main.async {
+                    self.isValid = stillValid
+                    completion?(stillValid)
+                }
+                return
+            }
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let valid = json["valid"] as? Bool, valid else {
+                log("[Speechy] Receipt rejected by backend")
+                DispatchQueue.main.async {
+                    self.isValid = false
+                    self.defaults.set(0.0, forKey: self.lastVerifiedKey)
+                    self.defaults.removeObject(forKey: self.cachedTransactionKey)
+                    completion?(false)
+                }
+                return
+            }
+
+            let txID = json["transaction_id"] as? String ?? ""
+            self.defaults.set(Date().timeIntervalSince1970, forKey: self.lastVerifiedKey)
+            self.defaults.set(txID, forKey: self.cachedTransactionKey)
+            DispatchQueue.main.async {
+                self.isValid = true
+                self.transactionID = txID
+                completion?(true)
+            }
+        }.resume()
+    }
+
+    /// Hard fail. Receipt rejected post-launch — show alert, terminate.
+    func handleInvalidReceipt() {
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Mac App Store Receipt Invalid"
+            alert.informativeText = "Your Speechy purchase could not be verified. Please re-download the app from the Mac App Store."
+            alert.alertStyle = .critical
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            NSApp.terminate(nil)
+        }
+    }
+}
+#endif
+
 // MARK: - License View
 struct LicenseView: View {
     @ObservedObject var licenseManager = LicenseManager.shared
@@ -4352,22 +4472,75 @@ class SpeechyIconView: NSView {
 struct LicenseTab: View {
     @ObservedObject var licenseManager = LicenseManager.shared
     @State private var showDeactivateConfirm = false
+    #if APP_STORE
+    @ObservedObject var receipt = AppStoreReceipt.shared
+    #endif
 
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
                 licenseHeader
+                #if APP_STORE
+                appStoreStatusCard
+                #else
                 licenseStatusCard
                 if licenseManager.isLicensed {
                     licenseDetailsCard
                     deactivateButton
                 }
+                #endif
                 permissionsSection
                 Spacer()
             }
             .padding(28)
         }
     }
+
+    #if APP_STORE
+    private var appStoreStatusCard: some View {
+        VStack(spacing: 16) {
+            HStack {
+                ZStack {
+                    Circle()
+                        .fill(receipt.isValid ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: receipt.isValid ? "checkmark.seal.fill" : "xmark.seal.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(receipt.isValid ? .green : .red)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(receipt.isValid ? "Mac App Store Purchase Verified" : "Receipt Invalid")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text(receipt.isValid ? "Speechy was purchased on the Mac App Store." : "Re-download from the Mac App Store.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+            }
+            if !receipt.transactionID.isEmpty {
+                HStack {
+                    Text("Transaction ID")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(receipt.transactionID)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.primary)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(receipt.isValid ? Color.green.opacity(0.05) : Color.red.opacity(0.05))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(receipt.isValid ? Color.green.opacity(0.2) : Color.red.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+    #endif
 
     private var licenseHeader: some View {
         VStack(spacing: 6) {
@@ -4735,6 +4908,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(handleSettingsHotkey), name: NSNotification.Name("OpenSettings"), object: nil)
 
         // Check license before full initialization
+        #if APP_STORE
+        // Mac App Store distribution: receipt validation gates entry. The synchronous
+        // exit(173) gate ran before NSApp started; here we re-verify against Apple via
+        // our backend. If still valid (or within offline grace), continue.
+        if AppStoreReceipt.shared.isValid {
+            log("[Speechy] App Store receipt cached as valid, initializing full app")
+            initializeFullApp()
+        }
+        AppStoreReceipt.shared.verifyOnline { [weak self] ok in
+            if !ok {
+                log("[Speechy] App Store receipt online verification failed")
+                AppStoreReceipt.shared.handleInvalidReceipt()
+            } else if !(self?.overlayWindow != nil) {
+                self?.initializeFullApp()
+            }
+        }
+        #else
         if LicenseManager.shared.isLicensed {
             log("[Speechy] License found, initializing full app")
             initializeFullApp()
@@ -4744,6 +4934,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             log("[Speechy] No valid license, showing license screen")
             showLicenseScreen()
         }
+        #endif
     }
 
     @objc func handleSettingsHotkey() {
@@ -4756,12 +4947,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // If no license, show license screen instead of settings
+        #if APP_STORE
+        if !AppStoreReceipt.shared.isValid {
+            log("[Speechy] Cmd+Shift+S pressed but receipt invalid, terminating")
+            AppStoreReceipt.shared.handleInvalidReceipt()
+        } else {
+            openSettings()
+        }
+        #else
         if !LicenseManager.shared.isLicensed {
             log("[Speechy] Cmd+Shift+S pressed but no license, showing license screen")
             showLicenseScreen()
         } else {
             openSettings()
         }
+        #endif
     }
 
     func initializeFullApp() {
@@ -4773,7 +4973,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyManager = HotkeyManager()
 
         // Start hourly license enforcement (checks every 1 hour, first check at 30s)
+        #if !APP_STORE
         LicenseManager.shared.startHourlyLicenseCheck()
+        #endif
 
         // Version check — blocks app if below minimum_version
         VersionManager.shared.checkVersion { [weak self] minVersion, latestVersion, updateURL in
@@ -6824,6 +7026,12 @@ class WhisperTranscriber {
 #if TESTING
 exit(runAllTests())
 #else
+#if APP_STORE
+// Synchronous receipt gate. exit(173) signals macOS to authenticate the user against
+// the Mac App Store and download a fresh receipt, then re-launch the binary. This is
+// the standard mechanism Apple expects for paid Mac App Store apps.
+AppStoreReceipt.gateOrExit()
+#endif
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate

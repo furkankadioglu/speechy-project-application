@@ -16,6 +16,7 @@ require __DIR__ . '/email.php';
 require __DIR__ . '/routes/app.php';
 require __DIR__ . '/routes/admin.php';
 require __DIR__ . '/routes/signup.php';
+require __DIR__ . '/routes/receipt.php';
 
 // CORS headers — restrict admin routes, allow app clients
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -46,6 +47,10 @@ try {
     }
 
     if (handle_signup_route($method, $path)) {
+        exit;
+    }
+
+    if (handle_receipt_route($method, $path)) {
         exit;
     }
 

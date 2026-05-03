@@ -28,10 +28,15 @@ Menu bar app that transcribes speech to text via configurable hotkeys and automa
 
 **Build & Run**:
 ```bash
-cd desktop
-./build.sh                    # Builds universal binary, copies to /Applications
+cd desktop/SpeechToText
+./build.sh                    # Build only
+./build.sh --install          # Build + replace /Applications/Speechy.app + codesign
+./build.sh --deploy           # Install + zip + upload to speechy.frkn.com.tr
+./build.sh --app-store        # Sandboxed Mac App Store build (-DAPP_STORE, .pkg)
 open /Applications/Speechy.app
 ```
+
+The `--app-store` build emits `build-appstore/Speechy.pkg` ready for App Store Connect upload. Receipt validation gates the binary; non-buyers cannot run it. See [claude_documentations/app-store-distribution.md](claude_documentations/app-store-distribution.md).
 
 **Manual Build** (without build script):
 ```bash

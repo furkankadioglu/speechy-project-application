@@ -21,4 +21,8 @@ return [
         'from_name' => 'Speechy',
         'from_email' => 'noreply@frkn.com.tr',
     ],
+
+    // Mac App Store shared secret (App Store Connect → App → App Information).
+    // Optional for one-time purchases, required for auto-renewable subscriptions.
+    'appstore_shared_secret' => '',
 ];
